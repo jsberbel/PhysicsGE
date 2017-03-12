@@ -1,0 +1,8 @@
+﻿  Main.cc
+d:\documents\[jsb]\repos\ps4brbengine\helloopengl\main.cc(512): warning C4244: '+=': conversion from 'double' to 'float', possible loss of data
+d:\documents\[jsb]\repos\ps4brbengine\helloopengl\main.cc(513): warning C4244: '+=': conversion from 'double' to 'float', possible loss of data
+  Game.cc
+  Generating Code...
+  glew.c
+  HelloOpenGL.vcxproj -> D:\Documents\[JSB]\Repos\PS4BrbEngine\Debug\HelloOpenGL.exe
+  HelloOpenGL.vcxproj -> D:\Documents\[JSB]\Repos\PS4BrbEngine\Debug\HelloOpenGL.pdb (Partial PDB)
