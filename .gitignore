@@ -1,0 +1,9 @@
+!*.lib
+!*.dll
+!*.obj
+!*.pdb
+*.opendb
+*.sdf
+*.suo
+*.exe
+*tmp*
