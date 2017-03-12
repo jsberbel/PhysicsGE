@@ -49,7 +49,7 @@ namespace Game
 		{
 			std::string msg;
 			glm::vec2 position;
-			int scale;
+			float scale;
 			glm::vec3 color;
 		};
 

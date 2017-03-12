@@ -148,7 +148,7 @@ namespace Game
 		{
 			if (gameData->asteroids.empty())
 			{
-				gameData->asteroids.resize(GameData::MAX_DEFAULT_ASTEROIDS * 1.5f);
+				gameData->asteroids.resize(static_cast<size_t>(GameData::MAX_DEFAULT_ASTEROIDS * 1.5f));
 				for (auto & asteroid : gameData->asteroids)
 				{
 					do asteroid.position = { rand() % input.windowHalfSize.x * 2 - input.windowHalfSize.x,
@@ -168,7 +168,7 @@ namespace Game
 				}
 			}
 
-			for (int i = 0; i < gameData->asteroids.size(); ++i)
+			for (size_t i = 0; i < gameData->asteroids.size(); ++i)
 			{
 				auto & asteroid = gameData->asteroids[i];
 

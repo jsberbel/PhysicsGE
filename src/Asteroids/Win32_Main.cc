@@ -9,8 +9,6 @@ global_var bool	   s_windowActive				 { true };
 global_var GLsizei s_screenWidth				 { 1920 };
 global_var GLsizei s_screenHeight				 { 1080 };
 
-std::map<GLchar, Character> Characters;
-
 internal_fn void GLAPIENTRY
 openGLDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam)
 {
@@ -313,7 +311,8 @@ LoadTexture(const char* path)
 #include "IO.hh"
 
 //int _tmain(int argc, _TCHAR* argv[])
-int __stdcall WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPSTR lpCmdLine, __in int nShowCmd)
+int __stdcall
+WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPSTR lpCmdLine, __in int nShowCmd)
 {
 	// INIT TIMER
 	LARGE_INTEGER l_LastFrameTime;
@@ -418,6 +417,7 @@ int __stdcall WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance
 
 	// TEXT RENDERING
 	GLData glyphData;
+	std::map<GLchar, Character> characters;
 	{
 		auto fileVS { ReadFullFile(L"../../res/shaders/glyph.vs") };
 		auto filePS { ReadFullFile(L"../../res/shaders/glyph.fs") };
@@ -469,9 +469,9 @@ int __stdcall WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance
 				texture,
 				glm::ivec2(face->glyph->bitmap.width, face->glyph->bitmap.rows),
 				glm::ivec2(face->glyph->bitmap_left, face->glyph->bitmap_top),
-				face->glyph->advance.x
+				static_cast<GLuint>(face->glyph->advance.x)
 			};
-			Characters.insert(std::pair<GLchar, Character>(c, character));
+			characters.insert(std::pair<GLchar, Character>(c, character));
 		}
 		glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -630,13 +630,13 @@ int __stdcall WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance
 			// Iterate through all characters
 			for (auto & c : text.msg)
 			{
-				Character ch = Characters[c];
+				Character ch = characters[c];
 
-				GLfloat xpos = text.position.x + ch.Bearing.x * text.scale;
-				GLfloat ypos = text.position.y - (ch.Size.y - ch.Bearing.y) * text.scale;
+				GLfloat xpos = text.position.x + ch.bearing.x * text.scale;
+				GLfloat ypos = text.position.y - (ch.size.y - ch.bearing.y) * text.scale;
 
-				GLfloat w = ch.Size.x * text.scale;
-				GLfloat h = ch.Size.y * text.scale;
+				GLfloat w = ch.size.x * text.scale;
+				GLfloat h = ch.size.y * text.scale;
 				// Update VBO for each character
 				GLfloat vertices[6][4] = {
 					{ xpos,     ypos + h,   0.0, 0.0 },
@@ -648,7 +648,7 @@ int __stdcall WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance
 					{ xpos + w, ypos + h,   1.0, 0.0 }
 				};
 				// Render glyph texture over quad
-				glBindTexture(GL_TEXTURE_2D, ch.TextureID);
+				glBindTexture(GL_TEXTURE_2D, ch.textureID);
 				// Update content of VBO memory
 				glBindBuffer(GL_ARRAY_BUFFER, glyphData.quadVAO.vbo);
 				glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // Be sure to use glBufferSubData and not glBufferData
@@ -657,7 +657,7 @@ int __stdcall WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance
 				// Render quad
 				glDrawArrays(GL_TRIANGLES, 0, 6);
 				// Now advance cursors for next glyph (note that advance is number of 1/64 pixels)
-				text.position.x += (ch.Advance >> 6) * text.scale; // Bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
+				text.position.x += (ch.advance >> 6) * text.scale; // Bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
 			}
 			glBindVertexArray(0);
 			glBindTexture(GL_TEXTURE_2D, 0);

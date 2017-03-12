@@ -1,8 +1,6 @@
 #pragma once
 #include <Windows.h>
 
-#include <glm/glm.hpp>
-
 #pragma comment (lib, "Winmm.lib")
 
 struct FullFile

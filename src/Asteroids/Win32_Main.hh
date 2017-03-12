@@ -19,7 +19,11 @@
 
 #pragma comment (lib, "opengl32.lib")
 #pragma comment (lib, "Winmm.lib")
-#pragma comment (lib, "freetype271d.lib")
+#ifdef _DEBUG
+	#pragma comment (lib, "freetype271d.lib")
+#else
+	#pragma comment (lib, "freetype271.lib")
+#endif
 
 #ifdef NDEBUG
 #define Assert(cnd, ...) (cnd)
@@ -66,8 +70,8 @@ struct GLData
 };
 
 struct Character {
-	GLuint     TextureID;  // ID handle of the glyph texture
-	glm::ivec2 Size;       // Size of glyph
-	glm::ivec2 Bearing;    // Offset from baseline to left/top of glyph
-	GLuint     Advance;    // Offset to advance to next glyph
+	GLuint     textureID;  // ID handle of the glyph texture
+	glm::ivec2 size;       // size of glyph
+	glm::ivec2 bearing;    // Offset from baseline to left/top of glyph
+	GLuint     advance;    // Offset to advance to next glyph
 };
