@@ -153,10 +153,10 @@ namespace Game
 				{
 					do asteroid.position = { rand() % input.windowHalfSize.x * 2 - input.windowHalfSize.x,
 						rand() % input.windowHalfSize.y * 2 - input.windowHalfSize.y };
-					while (asteroid.position.x < player.position.x + input.windowHalfSize.x*0.1f &&
-						   asteroid.position.x > player.position.x - input.windowHalfSize.x*0.1f &&
-						   asteroid.position.y < player.position.y + input.windowHalfSize.y*0.1f &&
-						   asteroid.position.y > player.position.y - input.windowHalfSize.y*0.1f);
+					while (asteroid.position.x > max(-input.windowHalfSize.x, player.position.x - input.windowHalfSize.x*0.2f) &&
+						   asteroid.position.x < min(input.windowHalfSize.x, player.position.x + input.windowHalfSize.x*0.2f) &&
+						   asteroid.position.y > max(-input.windowHalfSize.y, player.position.y - input.windowHalfSize.y*0.2f) &&
+						   asteroid.position.y < min(input.windowHalfSize.y, player.position.y + input.windowHalfSize.y*0.2f));
 
 					asteroid.lvl = GameData::AsteroidLvl(rand() % int(GameData::AsteroidLvl::MAX));
 					asteroid.size = { rand() % (input.windowHalfSize.x / 100) + 30.f*(int(asteroid.lvl) + 1),
