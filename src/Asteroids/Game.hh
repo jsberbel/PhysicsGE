@@ -57,7 +57,7 @@ namespace Game
 		std::vector<Text> texts;
 	};
 
-	auto InitGamedata	  (const InputData & input)					     -> GameData*;
-	auto Update			  (GameData * gameData, const InputData & input) -> RenderData;
-	auto FinalizeGameData (GameData * gameData)						     -> void;
+	auto InitGamedata	  (const InputData & input)							 -> GameData*;
+	auto Update			  (GameData & gameData, const InputData & inputData) -> RenderData;
+	auto FinalizeGameData (GameData * gameData)								 -> void;
 }

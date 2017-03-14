@@ -575,7 +575,7 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 				OutputDebugStringA(buffer);*/
 			}
 
-			renderData = Update(gameData, inputData);
+			renderData = Update(*gameData, inputData);
 			
 			LARGE_INTEGER l_UpdateTime;
 			QueryPerformanceCounter(&l_UpdateTime);

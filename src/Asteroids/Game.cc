@@ -26,8 +26,8 @@ namespace Game
 			AsteroidLvl lvl;
 		};
 
-		global_var const int MAX_DEFAULT_ASTEROIDS	{ 15 };
-		global_var const int MAX_BULLETS			{ 40 };
+		global_var const int MAX_DEFAULT_ASTEROIDS { 15 };
+		global_var const int MAX_BULLETS { 40 };
 
 		GameObject player;
 		std::vector<Asteroid> asteroids { MAX_DEFAULT_ASTEROIDS };
@@ -39,7 +39,7 @@ namespace Game
 
 	GameData::AsteroidLvl& operator--(GameData::AsteroidLvl & c) {
 		using IntType = std::underlying_type<GameData::AsteroidLvl>::type;
-			c = static_cast<GameData::AsteroidLvl>(static_cast<IntType>(c) - 1);
+		c = static_cast<GameData::AsteroidLvl>(static_cast<IntType>(c) - 1);
 		if (c == GameData::AsteroidLvl::NONE)
 			c = static_cast<GameData::AsteroidLvl>(0);
 		return c;
@@ -61,14 +61,14 @@ namespace Game
 		//ASTEROIDS
 		for (auto & asteroid : gameData->asteroids)
 		{
-			do asteroid.position = { rand() % input.windowHalfSize.x*2 - input.windowHalfSize.x,
-										rand() % input.windowHalfSize.y*2 - input.windowHalfSize.y };
+			do asteroid.position = { rand() % input.windowHalfSize.x * 2 - input.windowHalfSize.x,
+				rand() % input.windowHalfSize.y * 2 - input.windowHalfSize.y };
 			while (asteroid.position.x < input.windowHalfSize.x*0.3f && asteroid.position.x > -input.windowHalfSize.x*0.3f &&
-					asteroid.position.y < input.windowHalfSize.y*0.3f && asteroid.position.y > -input.windowHalfSize.y*0.3f);
+				   asteroid.position.y < input.windowHalfSize.y*0.3f && asteroid.position.y > -input.windowHalfSize.y*0.3f);
 
 			asteroid.lvl = GameData::AsteroidLvl(rand() % int(GameData::AsteroidLvl::MAX));
 			asteroid.size = { rand() % (input.windowHalfSize.x / 100) + 30.f*(int(asteroid.lvl) + 1),
-								rand() % (input.windowHalfSize.y / 100) + 30.f*(int(asteroid.lvl) + 1) };
+				rand() % (input.windowHalfSize.y / 100) + 30.f*(int(asteroid.lvl) + 1) };
 
 			asteroid.rotation = static_cast<float>(rand() % 360);
 			asteroid.speed = rand() % 50 + 40.f*(int(GameData::AsteroidLvl::MAX) / (int(asteroid.lvl) + 1));
@@ -99,9 +99,9 @@ namespace Game
 	InputData::ButtonState InputData::ProcessKey(const bool & prevKey, const bool & nowKey)
 	{
 		if (!prevKey && nowKey)
-  			return ButtonState::DOWN;
+			return ButtonState::DOWN;
 
-  		if (prevKey && !nowKey)
+		if (prevKey && !nowKey)
 			return ButtonState::UP;
 
 		if (prevKey && nowKey)
@@ -110,10 +110,10 @@ namespace Game
 		return ButtonState::NONE;
 	}
 
-	RenderData Update(GameData *gameData, const InputData& input)
+	RenderData Update(GameData & gameData, const InputData& input)
 	{
-		#define player gameData->player
-		#define deltaTime static_cast<float>(input.dt)
+	#define player gameData.player
+	#define deltaTime static_cast<float>(input.dt)
 
 		// PROCESS INPUT
 		{
@@ -134,10 +134,10 @@ namespace Game
 
 			if (input.buttonShoot == InputData::ButtonState::UP && !player.hidden)
 			{
-				gameData->bullets[gameData->curBullet].position = player.position + glm::vec2{ cos(player.rotation), sin(player.rotation) } * 10.f;
-				gameData->bullets[gameData->curBullet].rotation = player.rotation;
-				gameData->bullets[gameData->curBullet].hidden = false;
-				++gameData->curBullet = gameData->curBullet % GameData::MAX_BULLETS;
+				gameData.bullets[gameData.curBullet].position = player.position + glm::vec2 { cos(player.rotation), sin(player.rotation) } *10.f;
+				gameData.bullets[gameData.curBullet].rotation = player.rotation;
+				gameData.bullets[gameData.curBullet].hidden = false;
+				++gameData.curBullet = gameData.curBullet % GameData::MAX_BULLETS;
 			}
 		}
 
@@ -146,10 +146,10 @@ namespace Game
 
 		// PROCESS ASTEROIDS AND FILL RENDERDATA
 		{
-			if (gameData->asteroids.empty())
+			if (gameData.asteroids.empty())
 			{
-				gameData->asteroids.resize(static_cast<size_t>(GameData::MAX_DEFAULT_ASTEROIDS * 1.5f));
-				for (auto & asteroid : gameData->asteroids)
+				gameData.asteroids.resize(static_cast<size_t>(GameData::MAX_DEFAULT_ASTEROIDS * 1.5f));
+				for (auto & asteroid : gameData.asteroids)
 				{
 					do asteroid.position = { rand() % input.windowHalfSize.x * 2 - input.windowHalfSize.x,
 						rand() % input.windowHalfSize.y * 2 - input.windowHalfSize.y };
@@ -168,9 +168,9 @@ namespace Game
 				}
 			}
 
-			for (size_t i = 0; i < gameData->asteroids.size(); ++i)
+			for (size_t i = 0; i < gameData.asteroids.size(); ++i)
 			{
-				auto & asteroid = gameData->asteroids[i];
+				auto & asteroid = gameData.asteroids[i];
 
 				if (asteroid.hidden) continue;
 
@@ -222,7 +222,7 @@ namespace Game
 					asteroid.hidden = player.hidden = true;
 
 				// CHECK BULLETS
-				for (auto &bullet : gameData->bullets)
+				for (auto &bullet : gameData.bullets)
 				{
 					if (bullet.hidden) continue;
 
@@ -233,11 +233,11 @@ namespace Game
 					if (sqrt(dX * dX + dY * dY) < (asteroid.size.x + bullet.size.x))
 					{
 						bullet.hidden = true;
-						++gameData->score;
+						++gameData.score;
 
 						if (asteroid.lvl == GameData::AsteroidLvl::SMALL)
 						{
-							gameData->asteroids.erase(gameData->asteroids.begin() + i);
+							gameData.asteroids.erase(gameData.asteroids.begin() + i);
 							--i;
 						}
 						else
@@ -254,7 +254,7 @@ namespace Game
 							newAsteroid.rotation = static_cast<float>(rand() % 360);
 							newAsteroid.speed = rand() % 50 + 50.f;
 							newAsteroid.hidden = false;
-							gameData->asteroids.push_back(newAsteroid);
+							gameData.asteroids.push_back(newAsteroid);
 						}
 						break;
 					}
@@ -263,7 +263,7 @@ namespace Game
 		}
 
 		// PROCESS BULLETS
-		for (auto &bullet : gameData->bullets)
+		for (auto &bullet : gameData.bullets)
 		{
 			if (bullet.hidden) continue;
 			// BULLET UPDATE
@@ -322,17 +322,17 @@ namespace Game
 			renderData.texts.push_back(text);
 
 			text = {};
-			text.msg = "Score: " + std::to_string(gameData->score);
+			text.msg = "Score: " + std::to_string(gameData.score);
 			text.position = { input.windowHalfSize.x - 250, input.windowHalfSize.y - 60 };
 			text.scale = 1.f;
 			text.color = { 1.f, 0.8f, 0.2f };
 			renderData.texts.push_back(text);
 		}
-		
+
 		return renderData;
 
-		#undef player
-		#undef deltaTime
+	#undef player
+	#undef deltaTime
 	}
 }
 
