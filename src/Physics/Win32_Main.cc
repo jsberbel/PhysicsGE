@@ -1,13 +1,16 @@
 #include "Win32_Main.hh"
 #include <map>
+#include <chrono>
+#include <string>
 
 // global static vars
 global_var HGLRC   s_OpenGLRenderingContext		 { nullptr };
 global_var HDC	   s_WindowHandleToDeviceContext { nullptr };
 
 global_var bool	   s_windowActive				 { true };
-global_var GLsizei s_screenWidth				 { 1920 };
-global_var GLsizei s_screenHeight				 { 1080 };
+global_var GLsizei s_screenWidth				 { 900 }; // 1920
+global_var GLsizei s_screenHeight				 { 600 }; // 1080
+global_var GLsizei s_windowResized				 { false };
 
 internal_fn void GLAPIENTRY
 openGLDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam)
@@ -161,6 +164,7 @@ WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 		//s_screenWidth = LOWORD(lParam);  // Macro to get the low-order word.
 		//s_screenHeight = HIWORD(lParam); // Macro to get the high-order word.
 		glViewport(0, 0, s_screenWidth = LOWORD(lParam), s_screenHeight = HIWORD(lParam));
+		s_windowResized = true;
 		break;
 	}
 	case WM_ACTIVATE: {
@@ -250,26 +254,26 @@ CreateBuffer(const void *data, GLsizei size)
 	return buffer;
 }
 
-internal_fn VAO
-CreateVertexArrayObject(const VertexTN * vertexs, int numVertexs, const uint16_t * indices, int numIndices)
+internal_fn Win32::VAO
+CreateVertexArrayObject(const Win32::VertexTN * vertexs, int numVertexs, const uint16_t * indices, int numIndices)
 {
-	VAO vao;
+	Win32::VAO vao;
 	vao.numIndices = numIndices;
 
 	glGenVertexArrays(1, &vao.vao);
 	glBindVertexArray(vao.vao);
 
-	vao.vbo = CreateBuffer<GL_ARRAY_BUFFER>(vertexs, sizeof(VertexTN) * numVertexs);  // create an array buffer (vertex buffer)
+	vao.vbo = CreateBuffer<GL_ARRAY_BUFFER>(vertexs, sizeof(Win32::VertexTN) * numVertexs);  // create an array buffer (vertex buffer)
 	vao.ebo = CreateBuffer<GL_ELEMENT_ARRAY_BUFFER>(indices, sizeof(uint16_t) * numIndices); // create an element array buffer (index buffer)
 
 	glVertexAttribPointer(0, // Vertex Attrib Index
 		3, GL_FLOAT, // 3 floats
 		GL_FALSE, // no normalization
-		sizeof(VertexTN), // offset from a vertex to the next
-		reinterpret_cast<GLvoid*>(offsetof(VertexTN, p)) // offset from the start of the buffer to the first vertex
+		sizeof(Win32::VertexTN), // offset from a vertex to the next
+		reinterpret_cast<GLvoid*>(offsetof(Win32::VertexTN, p)) // offset from the start of the buffer to the first vertex
 	); // positions
-	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(VertexTN), reinterpret_cast<GLvoid*>(offsetof(VertexTN, c))); // colors
-	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(VertexTN), reinterpret_cast<GLvoid*>(offsetof(VertexTN, t))); // textures
+	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Win32::VertexTN), reinterpret_cast<GLvoid*>(offsetof(Win32::VertexTN, c))); // colors
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Win32::VertexTN), reinterpret_cast<GLvoid*>(offsetof(Win32::VertexTN, t))); // textures
 	//glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(VertexTN), reinterpret_cast<GLvoid*>(offsetof(VertexTN, n))); // normals
 
 	glEnableVertexAttribArray(0);
@@ -304,11 +308,161 @@ LoadTexture(const char* path)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	//glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8_ALPHA8, x, y, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+	glBindTexture(GL_TEXTURE_2D, 0);
 
 	return result;
 }
 
+inline bool HandleMouse(const MSG& msg, Game::InputData &data_)
+{
+	switch (msg.message)
+	{
+		case WM_LBUTTONDOWN:
+			data_.mouseButtonL = data_.mouseButtonL == Game::InputData::ButtonState::DOWN ? Game::InputData::ButtonState::HOLD : Game::InputData::ButtonState::DOWN;
+			return true;
+		case WM_LBUTTONUP:
+			data_.mouseButtonL = Game::InputData::ButtonState::UP;
+			return true;
+		case WM_RBUTTONDOWN:
+			data_.mouseButtonR = data_.mouseButtonR == Game::InputData::ButtonState::DOWN ? Game::InputData::ButtonState::HOLD : Game::InputData::ButtonState::DOWN;
+			return true;
+		case WM_RBUTTONUP:
+			data_.mouseButtonR = Game::InputData::ButtonState::UP;
+			return true;
+		case WM_MOUSEMOVE:
+			data_.mousePosition.x = LOWORD(msg.lParam);
+			data_.mousePosition.y = HIWORD(msg.lParam);
+			return true;
+		default:
+			return false;
+	}
+}
+
+inline void RenderDearImgui(const Win32::Renderer &renderer)
+{
+	ImDrawData* draw_data = ImGui::GetDrawData(); // instructions list to draw
+
+	// Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
+	ImGuiIO& io = ImGui::GetIO();
+	int fb_width = (int)(io.DisplaySize.x * io.DisplayFramebufferScale.x);
+	int fb_height = (int)(io.DisplaySize.y * io.DisplayFramebufferScale.y);
+	if (fb_width == 0 || fb_height == 0 || draw_data == nullptr)
+		return;
+	draw_data->ScaleClipRects(io.DisplayFramebufferScale);
+
+	// We are using the OpenGL fixed pipeline to make the example code simpler to read!
+	// Setup render state: alpha-blending enabled, no face culling, no depth testing, scissor enabled, vertex/texcoord/color pointers.
+	GLint last_texture; glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
+	GLint last_viewport[4]; glGetIntegerv(GL_VIEWPORT, last_viewport);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_SCISSOR_TEST); // draw only a portion of the screen
+
+	GLuint program = renderer.programs[Win32::Renderer::DearImgui];
+	glUseProgram(program);
+	glBindBufferBase(GL_UNIFORM_BUFFER, 0, renderer.uniforms[Win32::Renderer::DearImgui]);
+	//glUseProgram(0); // You may want this if using this code in an OpenGL 3+ context
+
+
+	// Setup viewport, orthographic projection matrix
+	glViewport(0, 0, (GLsizei)fb_width, (GLsizei)fb_height);
+
+	glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[Win32::Renderer::DearImgui]);
+	glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(ImVec2), (GLvoid*)&io.DisplaySize);
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+	auto texture = renderer.textures[Win32::Renderer::DearImgui];
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindVertexArray(renderer.vaos[static_cast<int>(Game::RenderData::TextureID::COUNT)].vao);
+	glBindBuffer(GL_ARRAY_BUFFER, renderer.vaos[static_cast<int>(Game::RenderData::TextureID::COUNT)].vbo);
+
+	// Render command lists
+	for (int n = 0; n < draw_data->CmdListsCount; n++)
+	{
+		const ImDrawList* cmd_list = draw_data->CmdLists[n];
+		const ImDrawVert* vtx_buffer = &cmd_list->VtxBuffer.front();
+		const ImDrawIdx* idx_buffer = &cmd_list->IdxBuffer.front();
+
+		glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(ImDrawVert) * cmd_list->VtxBuffer.size(), (GLvoid*)vtx_buffer);
+
+		for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.size(); cmd_i++)
+		{
+			const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
+			if (pcmd->UserCallback)
+			{
+				pcmd->UserCallback(cmd_list, pcmd);
+			}
+			else
+			{
+				if (pcmd->TextureId == nullptr)
+				{
+					glBindTexture(GL_TEXTURE_2D, texture);
+				}
+				else
+				{
+					glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)pcmd->TextureId);
+				}
+				glScissor((int)pcmd->ClipRect.x, (int)(fb_height - pcmd->ClipRect.w), (int)(pcmd->ClipRect.z - pcmd->ClipRect.x), (int)(pcmd->ClipRect.w - pcmd->ClipRect.y));
+				static_assert(sizeof(ImDrawIdx) == 2 || sizeof(ImDrawIdx) == 4, "indexes are 2 or 4 bytes long");
+				glDrawElements(GL_TRIANGLES, (GLsizei)pcmd->ElemCount, sizeof(ImDrawIdx) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT, idx_buffer);
+			}
+			idx_buffer += pcmd->ElemCount;
+		}
+	}
+
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	// Restore modified state
+	glBindTexture(GL_TEXTURE_2D, (GLuint)last_texture);
+	glDisable(GL_SCISSOR_TEST);
+	glViewport(last_viewport[0], last_viewport[1], (GLsizei)last_viewport[2], (GLsizei)last_viewport[3]);
+}
+
+void Win32::GenerateWindow(HINSTANCE hInstance, const wchar_t *name)
+{
+	WNDCLASS wc { 0 }; // Contains the window class attributes
+	wc.lpfnWndProc = WndProc; // A pointer to the window procedure (fn that processes msgs)
+	wc.hInstance = hInstance; // A handle to the instance that contains the window procedure
+	wc.hbrBackground = HBRUSH(COLOR_BACKGROUND); // A handle to the class background brush
+	wc.lpszClassName = name; // Specifies the window class name
+	wc.style = CS_OWNDC; // Class styles: CS_OWNDC -> Allocates a unique device context for each window in the class
+
+	Assert (RegisterClass(&wc)); // Registers a window class for subsequent use in calls
+	HWND hWnd { CreateWindowW(wc.lpszClassName, name, // Class name initialized before // Window name
+							  WS_OVERLAPPEDWINDOW | WS_VISIBLE, // Style of the window created
+							  CW_USEDEFAULT, CW_USEDEFAULT, // Window position in device units
+							  s_screenWidth, s_screenHeight, // Window size in device units
+							  nullptr, nullptr, // Parent handle // Menu handle
+							  hInstance, nullptr) }; // Handle to instance of the module // Pointer to winstuff
+}
+
 #include "IO.hh"
+
+inline const wchar_t *GetShader(const wchar_t *shader)
+{
+	wchar_t buffer[512];
+	wsprintf(buffer, L"../../res/shaders/%s", shader);
+	return buffer;
+}
+
+GLuint Win32::GenerateProgram(const wchar_t *vertexShader, const wchar_t *fragmentShader)
+{
+	GLuint vs, ps, program;
+	Assert(CompileShader(vs, ReadFullFile(GetShader(vertexShader)).data, GL_VERTEX_SHADER) &&
+		   CompileShader(ps, ReadFullFile(GetShader(fragmentShader)).data, GL_FRAGMENT_SHADER) &&
+		   LinkShaders(program, vs, ps));
+
+	if (!vs || vs == GL_INVALID_ENUM)
+		glDeleteShader(vs);
+	if (!ps || ps == GL_INVALID_ENUM)
+		glDeleteShader(ps);
+
+	return program;
+}
 
 //int _tmain(int argc, _TCHAR* argv[])
 int __stdcall
@@ -325,77 +479,134 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 	int64_t l_TicksPerFrame = l_PerfCountFrequency / MAX_FPS;
 
 	// LOAD WINDOW STUFF
-	{
-		WNDCLASS wc{ 0 }; // Contains the window class attributes
-		wc.lpfnWndProc = WndProc; // A pointer to the window procedure (fn that processes msgs)
-		wc.hInstance = hInstance; // A handle to the instance that contains the window procedure
-		wc.hbrBackground = HBRUSH(COLOR_BACKGROUND); // A handle to the class background brush
-		wc.lpszClassName = L"Asteroids"; // Specifies the window class name
-		wc.style = CS_OWNDC; // Class styles: CS_OWNDC -> Allocates a unique device context for each window in the class
-
-		Assert (RegisterClass(&wc)); // Registers a window class for subsequent use in calls
-		HWND hWnd{ CreateWindowW(wc.lpszClassName, L"Asteroids", // Class name initialized before // Window name
-								 WS_OVERLAPPEDWINDOW | WS_VISIBLE, // Style of the window created
-								 CW_USEDEFAULT, CW_USEDEFAULT, // Window position in device units
-								 s_screenWidth, s_screenHeight, // Window size in device units
-								 nullptr, nullptr, // Parent handle // Menu handle
-								 hInstance, nullptr) }; // Handle to instance of the module // Pointer to winstuff
-	}
+	Win32::GenerateWindow(hInstance, L"Pool Game");
 
 	// INIT SHADERS
-	GLData glData;
+	Win32::Renderer renderer;
+	renderer.programs[0] = Win32::GenerateProgram(L"Simple.vs", L"Simple.fs");
+	renderer.programs[Win32::Renderer::DearImgui] = Win32::GenerateProgram(L"DearImgui.vert", L"DearImgui.frag");
+
+	Win32::VertexTN vtxs[] {
+		{ glm::vec3 { -1, -1, 0 }, glm::vec3 { 0, 0, 0 }, glm::vec4 { 1, 1, 1, 1 }, glm::vec2 { 0,0 } },
+		{ glm::vec3 { +1, -1, 0 }, glm::vec3 { 0, 0, 0 }, glm::vec4 { 1, 1, 1, 1 }, glm::vec2 { 1,0 } },
+		{ glm::vec3 { -1, +1, 0 }, glm::vec3 { 0, 0, 0 }, glm::vec4 { 1, 1, 1, 1 }, glm::vec2 { 0,1 } },
+		{ glm::vec3 { +1, +1, 0 }, glm::vec3 { 0, 0, 0 }, glm::vec4 { 1, 1, 1, 1 }, glm::vec2 { 1,1 } }
+	};
+	uint16_t idxs[] {
+		0, 1, 2,
+		2, 1, 3
+	};
+	renderer.vaos[0] = CreateVertexArrayObject(vtxs, sizeof vtxs / sizeof Win32::VertexTN, idxs, sizeof idxs / sizeof uint16_t);
+
 	{
-		auto fileVS{ ReadFullFile(L"../../res/shaders/Simple.vs") };
-		auto filePS{ ReadFullFile(L"../../res/shaders/Simple.fs") };
-		
-		GLuint vs, ps;
-		Assert(CompileShader(vs, fileVS.data, GL_VERTEX_SHADER) &&
-			   CompileShader(ps, filePS.data, GL_FRAGMENT_SHADER) &&
-			   LinkShaders(glData.program, vs, ps));
+		glGenVertexArrays(1, &renderer.vaos[Win32::Renderer::DearImgui].vao);
 
-		if (vs > 0)
-			glDeleteShader(vs);
-		if (ps > 0)
-			glDeleteShader(ps);
+		renderer.vaos[Win32::Renderer::DearImgui].vbo = CreateBuffer<GL_ARRAY_BUFFER, GL_DYNAMIC_DRAW>(nullptr, sizeof(ImDrawVert) * Win32::Renderer::BuffersSize);  // create an array buffer (vertex buffer)
+		//renderer.vaos[Win32::Renderer::DearImgui].ebo = CreateBuffer<GL_ELEMENT_ARRAY_BUFFER>(indices, sizeof(uint16_t) * numIndices); // create an element array buffer (index buffer)
 
-		glUseProgram(glData.program); // Installs a program object as part of current rendering state
+		//glGenBuffers(Win32::Renderer::VAO_COUNT/*VERTEX_ARRAY_COUNT*/, &renderer.vaos[Win32::Renderer::DearImgui].vbo);
+		//glGenVertexArrays(Win32::Renderer::VAO_COUNT, &renderer.vaos[Win32::Renderer::DearImgui].vao);
+
+		glBindVertexArray(renderer.vaos[Win32::Renderer::DearImgui].vao);
+
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (GLvoid*)offsetof(ImDrawVert, pos));
+		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (GLvoid*)offsetof(ImDrawVert, uv));
+		glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(ImDrawVert), (GLvoid*)offsetof(ImDrawVert, col));
+
+		glEnableVertexAttribArray(0);
+		glEnableVertexAttribArray(1);
+		glEnableVertexAttribArray(2);
+
+		// reset default opengl state
+		glBindVertexArray(0);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glDisableVertexAttribArray(0);
+		glDisableVertexAttribArray(1);
+		glDisableVertexAttribArray(2);
 	}
 
-	// INIT TRIANGLE VERTICES
-	/*{
-		VertexTN vtxs[]{
-			{ glm::vec3{ -1, -1, 0 }, glm::vec3{ 0, 0, 0 }, glm::vec4{ 1, 1, 1, 1 }, glm::vec2{ 0,0 } },
-			{ glm::vec3{ -1, +1, 0 }, glm::vec3{ 0, 0, 0 }, glm::vec4{ 1, 1, 1, 1 }, glm::vec2{ 1,0 } },
-			{ glm::vec3{ +1, +0, 0 }, glm::vec3{ 0, 0, 0 }, glm::vec4{ 1, 1, 1, 1 }, glm::vec2{ 0,1 } }
-		};
-		uint16_t idxs[]{
-			0, 1, 2,
-		};
-
-		VAO triangleVAO = CreateVertexArrayObject(vtxs, sizeof(vtxs), idxs, sizeof(idxs));
-	}*/
-
-	// INIT QUAD VERTICES
+	glGenBuffers(Win32::Renderer::UNIFORM_COUNT, renderer.uniforms);
 	{
-		VertexTN vtxs[]{
-			{ glm::vec3{ -1, -1, 0 }, glm::vec3{ 0, 0, 0 }, glm::vec4{ 1, 1, 1, 1 }, glm::vec2{ 0,0 } },
-			{ glm::vec3{ +1, -1, 0 }, glm::vec3{ 0, 0, 0 }, glm::vec4{ 1, 1, 1, 1 }, glm::vec2{ 1,0 } },
-			{ glm::vec3{ -1, +1, 0 }, glm::vec3{ 0, 0, 0 }, glm::vec4{ 1, 1, 1, 1 }, glm::vec2{ 0,1 } },
-			{ glm::vec3{ +1, +1, 0 }, glm::vec3{ 0, 0, 0 }, glm::vec4{ 1, 1, 1, 1 }, glm::vec2{ 1,1 } }
-		};
-		uint16_t idxs[]{
-			0, 1, 2,
-			2, 1, 3
-		};
+		glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[0]);
+		glBufferData(  // sets the buffer content
+					 GL_UNIFORM_BUFFER,		// type of buffer
+					 sizeof Win32::InstanceData,		// size of the buffer content
+					 nullptr,		// content of the buffer
+					 GL_DYNAMIC_DRAW);	// usage of the buffer. DYNAMIC -> will change frequently. DRAW -> from CPU to GPU
 
-		glData.quadVAO = CreateVertexArrayObject(vtxs, sizeof vtxs / sizeof VertexTN, idxs, sizeof idxs / sizeof uint16_t);
+		glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[Win32::Renderer::DearImgui]);
+		glBufferData(  // sets the buffer content
+					 GL_UNIFORM_BUFFER,		// type of buffer
+					 sizeof ImVec2,		// size of the buffer content
+					 nullptr,		// content of the buffer
+					 GL_DYNAMIC_DRAW);	// usage of the buffer. DYNAMIC -> will change frequently. DRAW -> from CPU to GPU
 	}
 	
-	// INIT INSTANCE DATA BUFFER
-	glData.instanceDataBuffer = CreateBuffer<GL_UNIFORM_BUFFER, GL_DYNAMIC_DRAW>(nullptr, sizeof InstanceData);
-
 	// LOAD TEXTURES
-	glData.textures[static_cast<int>(Game::RenderData::TextureID::BALL)] =		LoadTexture("../../res/images/ball.png");
+	glGenTextures(Win32::Renderer::TEXTURE_COUNT, renderer.textures);
+	{
+		std::string texturePath;
+		for (int i = static_cast<int>(Game::RenderData::TextureID::BALL_0);
+			     i < static_cast<int>(Game::RenderData::TextureID::MAX_BALLS);
+			     ++i)
+		{
+			texturePath = "../../res/images/ball" + std::to_string(i) + ".png";
+			renderer.textures[i] = LoadTexture(texturePath.c_str());
+		}
+		renderer.textures[static_cast<int>(Game::RenderData::TextureID::PIXEL)] = LoadTexture("../../res/images/pixel.png");
+
+		// TODO reload imgui
+		uint8_t* pixels;
+
+		int width, height;
+		ImGui::GetIO().Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+
+		glBindTexture(GL_TEXTURE_2D, renderer.textures[static_cast<int>(Game::RenderData::TextureID::COUNT)]);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+		GLenum formats[4] { GL_RED, GL_RG, GL_RGB, GL_RGBA };
+
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)width, (GLsizei)height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+	}
+
+	// KEYBOARD MAPPING
+	{
+		ImGuiIO& io = ImGui::GetIO();
+		io.KeyMap[ImGuiKey_Tab] = VK_TAB;                     // Keyboard mapping. ImGui will use those indices to peek into the io.KeyDown[] array.
+		io.KeyMap[ImGuiKey_LeftArrow] = VK_LEFT;
+		io.KeyMap[ImGuiKey_RightArrow] = VK_RIGHT;
+		io.KeyMap[ImGuiKey_UpArrow] = VK_UP;
+		io.KeyMap[ImGuiKey_DownArrow] = VK_DOWN;
+		io.KeyMap[ImGuiKey_PageUp] = VK_PRIOR;
+		io.KeyMap[ImGuiKey_PageDown] = VK_NEXT;
+		io.KeyMap[ImGuiKey_Home] = VK_HOME;
+		io.KeyMap[ImGuiKey_End] = VK_END;
+		io.KeyMap[ImGuiKey_Delete] = VK_DELETE;
+		io.KeyMap[ImGuiKey_Backspace] = VK_BACK;
+		io.KeyMap[ImGuiKey_Enter] = VK_RETURN;
+		io.KeyMap[ImGuiKey_Escape] = VK_ESCAPE;
+		io.KeyMap[ImGuiKey_A] = 'A';
+		io.KeyMap[ImGuiKey_C] = 'C';
+		io.KeyMap[ImGuiKey_V] = 'V';
+		io.KeyMap[ImGuiKey_X] = 'X';
+		io.KeyMap[ImGuiKey_Y] = 'Y';
+		io.KeyMap[ImGuiKey_Z] = 'Z';
+
+		//io.IniFilename = "imgui.ini";
+		/*io.RenderDrawListsFn = [] (ImDrawData*drawData)
+		{
+			int a = 4;
+		};*/
+
+		//io.SetClipboardTextFn = ImGui_ImplGlfwGL3_SetClipboardText;
+		//io.GetClipboardTextFn = ImGui_ImplGlfwGL3_GetClipboardText;
+		//io.ClipboardUserData = (void*)hWnd;
+	}
 
 	// GAME DATA
 	Game::InputData inputData;
@@ -406,86 +617,12 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 	memset(buttonsPrevKey, false, 255);
 	memset(buttonsNowKey, false, 255);
 
-	// create a orthogonal projection matrix¡
-	glm::mat4 projection = glm::ortho(-static_cast<float>(inputData.windowHalfSize.x), //left
-									  static_cast<float>(inputData.windowHalfSize.x), //right
-									  -static_cast<float>(inputData.windowHalfSize.y), //bot
-									  static_cast<float>(inputData.windowHalfSize.y), //top
+	// create a orthogonal projection matrix
+	glm::mat4 projection = glm::ortho(-static_cast<float>(inputData.windowHalfSize.x), // left
+									  static_cast<float>(inputData.windowHalfSize.x), // right
+									  -static_cast<float>(inputData.windowHalfSize.y), // bot
+									  static_cast<float>(inputData.windowHalfSize.y), // top
 									  -5.0f, 5.0f); // near // far
-
-	// TEXT RENDERING
-	GLData glyphData;
-	std::map<GLchar, Character> characters;
-	{
-		auto fileVS { ReadFullFile(L"../../res/shaders/glyph.vs") };
-		auto filePS { ReadFullFile(L"../../res/shaders/glyph.fs") };
-		GLuint vs, ps;
-		Assert(CompileShader(vs, fileVS.data, GL_VERTEX_SHADER) &&
-			   CompileShader(ps, filePS.data, GL_FRAGMENT_SHADER) &&
-			   LinkShaders(glyphData.program, vs, ps));
-		glUseProgram(glyphData.program);
-		glUniformMatrix4fv(glGetUniformLocation(glyphData.program, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
-
-		FT_Library ft;
-		Assert (!FT_Init_FreeType(&ft));
-		FT_Face face;
-		Assert (!FT_New_Face(ft, "../../res/fonts/arial.ttf", 0, &face));
-
-		FT_Set_Pixel_Sizes(face, 0, 48);
-		glPixelStorei(GL_UNPACK_ALIGNMENT, 1); // Disable byte-alignment restriction
-
-		for (GLubyte c = 0; c < 128; c++)
-		{
-			// Load character glyph 
-			if (FT_Load_Char(face, c, FT_LOAD_RENDER))
-			{
-				OutputDebugStringA("ERROR::FREETYTPE: Failed to load Glyph");
-				continue;
-			}
-			// Generate texture
-			GLuint texture;
-			glGenTextures(1, &texture);
-			glBindTexture(GL_TEXTURE_2D, texture);
-			glTexImage2D(
-				GL_TEXTURE_2D,
-				0,
-				GL_RED,
-				face->glyph->bitmap.width,
-				face->glyph->bitmap.rows,
-				0,
-				GL_RED,
-				GL_UNSIGNED_BYTE,
-				face->glyph->bitmap.buffer
-			);
-			// Set texture options
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			// Now store character for later use
-			Character character = {
-				texture,
-				glm::ivec2(face->glyph->bitmap.width, face->glyph->bitmap.rows),
-				glm::ivec2(face->glyph->bitmap_left, face->glyph->bitmap_top),
-				static_cast<GLuint>(face->glyph->advance.x)
-			};
-			characters.insert(std::pair<GLchar, Character>(c, character));
-		}
-		glBindTexture(GL_TEXTURE_2D, 0);
-
-		FT_Done_Face(face);
-		FT_Done_FreeType(ft);
-
-		glGenVertexArrays(1, &glyphData.quadVAO.vao);
-		glGenBuffers(1, &glyphData.quadVAO.vbo);
-		glBindVertexArray(glyphData.quadVAO.vao);
-		glBindBuffer(GL_ARRAY_BUFFER, glyphData.quadVAO.vbo);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-		glBindVertexArray(0);
-	}
 
 	// INIT TIME
 	QueryPerformanceCounter(&l_LastFrameTime);
@@ -516,9 +653,16 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 
 		inputData.dt = static_cast<double>(l_TicksPerFrame) / static_cast<double>(l_PerfCountFrequency);
 
-		/*char buffer[512];
-		sprintf_s(buffer, "dt: %d\n", numFramesElapsed);
-		OutputDebugStringA(buffer);*/
+		ImGuiIO& io = ImGui::GetIO();
+		io.DeltaTime = inputData.dt;
+		io.DisplaySize = ImVec2((float)s_screenWidth, (float)s_screenHeight);
+		io.MouseDown[0] = inputData.mouseButtonL == Game::InputData::ButtonState::DOWN || inputData.mouseButtonL == Game::InputData::ButtonState::HOLD;
+		io.MouseDown[1] = inputData.mouseButtonR == Game::InputData::ButtonState::DOWN || inputData.mouseButtonR == Game::InputData::ButtonState::HOLD;
+		ImGui::NewFrame();
+
+		ImGui::SetNextWindowPos(io.DisplaySize, ImGuiSetCond_FirstUseEver);
+		ImGui::ShowTestWindow();
+		ImGui::Button("Meow");
 
 		Game::RenderData renderData;
 		for (int i = 0; i < numFramesElapsed; ++i)
@@ -529,52 +673,36 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 
 				while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
 				{
-					bool processed { false };
-					switch (msg.message)
-					{
-						case WM_QUIT:
-							quit = true;
-							processed = true;
-							break;
-						case WM_KEYDOWN:
-							buttonsNowKey[msg.wParam & 255] = true;
-							processed = true;
-							if (msg.wParam == VK_ESCAPE)
-								PostQuitMessage(0);
-							break;
-						case WM_KEYUP:
-							buttonsNowKey[msg.wParam & 255] = false;
-							processed = true;
-							break;
-					}
+					bool fHandled = false;
+					if (msg.message >= WM_MOUSEFIRST && msg.message <= WM_MOUSELAST)
+						fHandled = HandleMouse(msg, inputData);
+					else if (msg.message == WM_QUIT)
+						quit = fHandled = true;
 
-					if (!processed)
+					HandleMouse(msg, inputData);
+
+					if (!fHandled)
 					{
 						TranslateMessage(&msg);
 						DispatchMessage(&msg);
 					}
 				}
-				
-				inputData.buttonUp	  =	Game::InputData::ProcessKey(buttonsPrevKey[0x57], buttonsNowKey[0x57]);
-				inputData.buttonLeft  =	Game::InputData::ProcessKey(buttonsPrevKey[0x41], buttonsNowKey[0x41]);
-				inputData.buttonRight = Game::InputData::ProcessKey(buttonsPrevKey[0x44], buttonsNowKey[0x44]);
-				inputData.buttonDown  =	Game::InputData::ProcessKey(buttonsPrevKey[0x53], buttonsNowKey[0x53]);
-          		inputData.buttonShoot = Game::InputData::ProcessKey(buttonsPrevKey[VK_SPACE], buttonsNowKey[VK_SPACE]);
 
-				for (auto *bpk = buttonsPrevKey, *bnk = buttonsNowKey; 
-					 bpk != buttonsPrevKey + 255, bnk != buttonsNowKey + 255;
-					 ++bpk, ++bnk)
+				if (s_windowResized)
 				{
-					*bpk = *bnk;
+					inputData.windowHalfSize = { s_screenWidth / 2, s_screenHeight / 2 };
+					// create a orthogonal projection matrix
+					projection = glm::ortho(-static_cast<float>(inputData.windowHalfSize.x), // left
+													  static_cast<float>(inputData.windowHalfSize.x), // right
+													  -static_cast<float>(inputData.windowHalfSize.y), // bot
+													  static_cast<float>(inputData.windowHalfSize.y), // top
+													  -5.0f, 5.0f); // near // far
+					s_windowResized = false;
 				}
-
-				/*char buffer[512];
-				sprintf_s(buffer, "prev: %d, now: %d\n", buttonsPrevKey[VK_SPACE], buttonsNowKey[VK_SPACE]);
-				OutputDebugStringA(buffer);*/
 			}
-
-			renderData = Update(*gameData, inputData);
 			
+			renderData = Update(*gameData, inputData);
+
 			LARGE_INTEGER l_UpdateTime;
 			QueryPerformanceCounter(&l_UpdateTime);
 
@@ -584,16 +712,16 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 				break;
 		}
 
-		glClearColor(0, 0, 0, 1);
+		glClearColor(0, 0.4, 0.2, 1);
 		glClear(GL_COLOR_BUFFER_BIT);
 
-		glUseProgram(glData.program);
+		glUseProgram(renderer.programs[0]);
 		glActiveTexture(GL_TEXTURE0 + 0);
 
 		// RENDER SPRITES
 		for (auto & sprite : renderData.sprites)
 		{
-			glBindTexture(GL_TEXTURE_2D, glData.textures[static_cast<int>(sprite.texture)]); // get the right texture
+			glBindTexture(GL_TEXTURE_2D, renderer.textures[static_cast<int>(sprite.texture)]); // get the right texture
 
 			// create the model matrix, with a scale and a translation.
 			glm::mat4 model {
@@ -605,61 +733,19 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 			};
 
 			// the transform is the addition of the model transformation and the projection
-			InstanceData instanceData { projection * model , glm::vec4(sprite.color, 1) };
+			Win32::InstanceData instanceData { projection * model , glm::vec4(sprite.color, 1) };
 
-			glBindBuffer(GL_UNIFORM_BUFFER, glData.instanceDataBuffer);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(InstanceData), static_cast<GLvoid*>(&instanceData));
+			glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[0]);
+			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Win32::InstanceData), static_cast<GLvoid*>(&instanceData));
 
-			glBindBufferBase(GL_UNIFORM_BUFFER, 0, glData.instanceDataBuffer);
+			glBindBufferBase(GL_UNIFORM_BUFFER, 0, renderer.uniforms[0]);
 
-			glBindVertexArray(glData.quadVAO.vao);
-			glDrawElements(GL_TRIANGLES, glData.quadVAO.numIndices, GL_UNSIGNED_SHORT, nullptr);
+			glBindVertexArray(renderer.vaos[0].vao);
+			glDrawElements(GL_TRIANGLES, renderer.vaos[0].numIndices, GL_UNSIGNED_SHORT, nullptr);
 		}
 
-		// RENDER TEXT
-		for (auto & text : renderData.texts)
-		{
-			// Activate corresponding render state	
-			glUseProgram(glyphData.program);
-			glUniform3f(glGetUniformLocation(glyphData.program, "textColor"), text.color.x, text.color.y, text.color.z);
-			glActiveTexture(GL_TEXTURE0);
-			glBindVertexArray(glyphData.quadVAO.vao);
-
-			// Iterate through all characters
-			for (auto & c : text.msg)
-			{
-				Character ch = characters[c];
-
-				GLfloat xpos = text.position.x + ch.bearing.x * text.scale;
-				GLfloat ypos = text.position.y - (ch.size.y - ch.bearing.y) * text.scale;
-
-				GLfloat w = ch.size.x * text.scale;
-				GLfloat h = ch.size.y * text.scale;
-				// Update VBO for each character
-				GLfloat vertices[6][4] = {
-					{ xpos,     ypos + h,   0.0, 0.0 },
-					{ xpos,     ypos,       0.0, 1.0 },
-					{ xpos + w, ypos,       1.0, 1.0 },
-
-					{ xpos,     ypos + h,   0.0, 0.0 },
-					{ xpos + w, ypos,       1.0, 1.0 },
-					{ xpos + w, ypos + h,   1.0, 0.0 }
-				};
-				// Render glyph texture over quad
-				glBindTexture(GL_TEXTURE_2D, ch.textureID);
-				// Update content of VBO memory
-				glBindBuffer(GL_ARRAY_BUFFER, glyphData.quadVAO.vbo);
-				glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // Be sure to use glBufferSubData and not glBufferData
-
-				glBindBuffer(GL_ARRAY_BUFFER, 0);
-				// Render quad
-				glDrawArrays(GL_TRIANGLES, 0, 6);
-				// Now advance cursors for next glyph (note that advance is number of 1/64 pixels)
-				text.position.x += (ch.advance >> 6) * text.scale; // Bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
-			}
-			glBindVertexArray(0);
-			glBindTexture(GL_TEXTURE_2D, 0);
-		}
+		ImGui::Render();
+		RenderDearImgui(renderer);
 		
 		SwapBuffers(s_WindowHandleToDeviceContext);
 

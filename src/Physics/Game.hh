@@ -23,7 +23,13 @@ namespace Game
 
 		double dt;
 
-		ButtonState buttonUp, buttonDown, buttonLeft, buttonRight, buttonShoot;
+		struct {
+			long x, y;
+		} mousePosition;
+
+		ButtonState mouseButtonL;
+		ButtonState mouseButtonR;
+
 		internal_fn ButtonState ProcessKey(const bool &prevKey, const bool &nowKey);
 	};
 
@@ -31,7 +37,24 @@ namespace Game
 	{
 		enum class TextureID
 		{
-			BALL,
+			BALL_0,
+			BALL_1,
+			BALL_2,
+			BALL_3,
+			BALL_4,
+			BALL_5,
+			BALL_6,
+			BALL_7,
+			BALL_8,
+			BALL_9,
+			BALL_10,
+			BALL_11,
+			BALL_12,
+			BALL_13,
+			BALL_14,
+			BALL_15,
+			MAX_BALLS,
+			PIXEL,
 			COUNT
 		};
 
@@ -57,5 +80,5 @@ namespace Game
 
 	auto InitGamedata	  (const InputData & input)							 -> GameData*;
 	auto Update			  (GameData & gameData, const InputData & inputData) -> RenderData;
-	auto FinalizeGameData (GameData * gameData)								 -> void;
+	auto FinalizeGameData (GameData *& gameData)							 -> void;
 }

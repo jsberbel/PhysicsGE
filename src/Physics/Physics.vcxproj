@@ -155,6 +155,9 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\dep\imgui\imgui.cpp" />
+    <ClCompile Include="..\..\dep\imgui\imgui_demo.cpp" />
+    <ClCompile Include="..\..\dep\imgui\imgui_draw.cpp" />
     <ClCompile Include="Game.cc" />
     <ClCompile Include="glew.c" />
     <ClCompile Include="Win32_Main.cc" />

@@ -38,7 +38,7 @@ for (const auto& ball : gameData.prevBalls)
 struct ContactData
 {
 	glm::dvec2 point, normal;
-	double penetatrion;
+	double penetration;
 	// --
 	double restitution, friction;
 };
@@ -50,7 +50,7 @@ struct Line
 };
 // plane x = 960 -> normal = {-1, 0}, distance = -960;
 
-// distance pont - plane ->  point · plane.normal - plane.distance;
+// distance point - plane ->  point · plane.normal - plane.distance;
 
 struct Circle
 {
@@ -81,7 +81,7 @@ struct Circle
 // - calcular velocitat de separació (Vs)
 // - si Vs > 0
 //   - novaVs = -c * Vs
-//   - totalInvMass = invMass[0] + invMass[1]
+//   - totalInvMass = invMassA + invMassB
 //   - deltaV = novaVs - Vs
 //   - impuls = deltaV / totalInvMass
 //   - impulsPerIMass = contactNormal * impuls
