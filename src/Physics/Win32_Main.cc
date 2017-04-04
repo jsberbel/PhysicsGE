@@ -12,6 +12,9 @@ global_var GLsizei s_screenWidth				 { 900 }; // 1920
 global_var GLsizei s_screenHeight				 { 600 }; // 1080
 global_var GLsizei s_windowResized				 { false };
 
+#define GET_X_LPARAM(lp) ((int)(short)LOWORD(lp))
+#define GET_Y_LPARAM(lp) ((int)(short)HIWORD(lp))
+
 internal_fn void GLAPIENTRY
 openGLDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam)
 {
@@ -163,7 +166,7 @@ WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	case WM_SIZE: {
 		//s_screenWidth = LOWORD(lParam);  // Macro to get the low-order word.
 		//s_screenHeight = HIWORD(lParam); // Macro to get the high-order word.
-		glViewport(0, 0, s_screenWidth = LOWORD(lParam), s_screenHeight = HIWORD(lParam));
+		glViewport(0, 0, s_screenWidth = GET_X_LPARAM(lParam), s_screenHeight = GET_Y_LPARAM(lParam));
 		s_windowResized = true;
 		break;
 	}
@@ -315,6 +318,7 @@ LoadTexture(const char* path)
 
 inline bool HandleMouse(const MSG& msg, Game::InputData &data_)
 {
+	//data_.mouseWheelZoom = 0.f;
 	switch (msg.message)
 	{
 		case WM_LBUTTONDOWN:
@@ -330,8 +334,11 @@ inline bool HandleMouse(const MSG& msg, Game::InputData &data_)
 			data_.mouseButtonR = Game::InputData::ButtonState::UP;
 			return true;
 		case WM_MOUSEMOVE:
-			data_.mousePosition.x = LOWORD(msg.lParam);
-			data_.mousePosition.y = HIWORD(msg.lParam);
+			data_.mousePosition.x = GET_X_LPARAM(msg.lParam);
+			data_.mousePosition.y = GET_Y_LPARAM(msg.lParam);
+			return true;
+		case WM_MOUSEWHEEL:
+			data_.mouseWheelZoom = GET_WHEEL_DELTA_WPARAM(msg.wParam)*0.001f;
 			return true;
 		default:
 			return false;
@@ -346,7 +353,7 @@ inline void RenderDearImgui(const Win32::Renderer &renderer)
 	ImGuiIO& io = ImGui::GetIO();
 	int fb_width = (int)(io.DisplaySize.x * io.DisplayFramebufferScale.x);
 	int fb_height = (int)(io.DisplaySize.y * io.DisplayFramebufferScale.y);
-	if (fb_width == 0 || fb_height == 0 || draw_data == nullptr)
+	if (fb_width == 0 || fb_height == 0/* || draw_data == nullptr*/)
 		return;
 	draw_data->ScaleClipRects(io.DisplayFramebufferScale);
 
@@ -358,7 +365,7 @@ inline void RenderDearImgui(const Win32::Renderer &renderer)
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glDisable(GL_CULL_FACE);
 	glDisable(GL_DEPTH_TEST);
-	glEnable(GL_SCISSOR_TEST); // draw only a portion of the screen
+	glEnable(GL_SCISSOR_TEST);
 
 	GLuint program = renderer.programs[Win32::Renderer::DearImgui];
 	glUseProgram(program);
@@ -373,11 +380,13 @@ inline void RenderDearImgui(const Win32::Renderer &renderer)
 	glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(ImVec2), (GLvoid*)&io.DisplaySize);
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-	auto texture = renderer.textures[Win32::Renderer::DearImgui];
+
+	auto texture = renderer.textures[static_cast<int>(Game::RenderData::TextureID::DEARIMGUI)];
+
 
 	glActiveTexture(GL_TEXTURE0);
-	glBindVertexArray(renderer.vaos[static_cast<int>(Game::RenderData::TextureID::COUNT)].vao);
-	glBindBuffer(GL_ARRAY_BUFFER, renderer.vaos[static_cast<int>(Game::RenderData::TextureID::COUNT)].vbo);
+	glBindVertexArray(renderer.vaos[Win32::Renderer::DearImgui].vao);
+	glBindBuffer(GL_ARRAY_BUFFER, renderer.vaos[Win32::Renderer::DearImgui].vbo);
 
 	// Render command lists
 	for (int n = 0; n < draw_data->CmdListsCount; n++)
@@ -560,21 +569,24 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 		uint8_t* pixels;
 
 		int width, height;
-		ImGui::GetIO().Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+		ImGui::GetIO().Fonts[0].GetTexDataAsRGBA32(&pixels, &width, &height, nullptr);
 
-		glBindTexture(GL_TEXTURE_2D, renderer.textures[static_cast<int>(Game::RenderData::TextureID::COUNT)]);
+		glBindTexture(GL_TEXTURE_2D, renderer.textures[static_cast<int>(Game::RenderData::TextureID::DEARIMGUI)]);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-		GLenum formats[4] { GL_RED, GL_RG, GL_RGB, GL_RGBA };
+		GLenum formats[4] = { GL_RED, GL_RG, GL_RGB, GL_RGBA };
 
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)width, (GLsizei)height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 	}
 
 	// KEYBOARD MAPPING
+	bool buttonsPrevKey[255], buttonsNowKey[255];
+	memset(buttonsPrevKey, false, 255);
+	memset(buttonsNowKey, false, 255);
 	{
 		ImGuiIO& io = ImGui::GetIO();
 		io.KeyMap[ImGuiKey_Tab] = VK_TAB;                     // Keyboard mapping. ImGui will use those indices to peek into the io.KeyDown[] array.
@@ -596,26 +608,12 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 		io.KeyMap[ImGuiKey_X] = 'X';
 		io.KeyMap[ImGuiKey_Y] = 'Y';
 		io.KeyMap[ImGuiKey_Z] = 'Z';
-
-		//io.IniFilename = "imgui.ini";
-		/*io.RenderDrawListsFn = [] (ImDrawData*drawData)
-		{
-			int a = 4;
-		};*/
-
-		//io.SetClipboardTextFn = ImGui_ImplGlfwGL3_SetClipboardText;
-		//io.GetClipboardTextFn = ImGui_ImplGlfwGL3_GetClipboardText;
-		//io.ClipboardUserData = (void*)hWnd;
 	}
 
 	// GAME DATA
 	Game::InputData inputData;
 	inputData.windowHalfSize = { s_screenWidth / 2, s_screenHeight / 2 };
 	Game::GameData * gameData = Game::InitGamedata(inputData);
-
-	bool buttonsPrevKey[255], buttonsNowKey[255];
-	memset(buttonsPrevKey, false, 255);
-	memset(buttonsNowKey, false, 255);
 
 	// create a orthogonal projection matrix
 	glm::mat4 projection = glm::ortho(-static_cast<float>(inputData.windowHalfSize.x), // left
@@ -653,17 +651,6 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 
 		inputData.dt = static_cast<double>(l_TicksPerFrame) / static_cast<double>(l_PerfCountFrequency);
 
-		ImGuiIO& io = ImGui::GetIO();
-		io.DeltaTime = inputData.dt;
-		io.DisplaySize = ImVec2((float)s_screenWidth, (float)s_screenHeight);
-		io.MouseDown[0] = inputData.mouseButtonL == Game::InputData::ButtonState::DOWN || inputData.mouseButtonL == Game::InputData::ButtonState::HOLD;
-		io.MouseDown[1] = inputData.mouseButtonR == Game::InputData::ButtonState::DOWN || inputData.mouseButtonR == Game::InputData::ButtonState::HOLD;
-		ImGui::NewFrame();
-
-		ImGui::SetNextWindowPos(io.DisplaySize, ImGuiSetCond_FirstUseEver);
-		ImGui::ShowTestWindow();
-		ImGui::Button("Meow");
-
 		Game::RenderData renderData;
 		for (int i = 0; i < numFramesElapsed; ++i)
 		{
@@ -677,7 +664,19 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 					if (msg.message >= WM_MOUSEFIRST && msg.message <= WM_MOUSELAST)
 						fHandled = HandleMouse(msg, inputData);
 					else if (msg.message == WM_QUIT)
-						quit = fHandled = true;
+						quit = fHandled = true;	
+					else if (msg.message == WM_KEYDOWN)
+					{
+						buttonsNowKey[msg.wParam & 255] = true;
+						fHandled = true;
+						if (msg.wParam == VK_ESCAPE)
+							PostQuitMessage(0);
+					}
+					else if (msg.message == WM_KEYUP)
+					{
+						buttonsNowKey[msg.wParam & 255] = false;
+						fHandled = true;
+					}
 
 					HandleMouse(msg, inputData);
 
@@ -700,6 +699,36 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 					s_windowResized = false;
 				}
 			}
+
+			ImGuiIO& io = ImGui::GetIO();
+			io.DeltaTime = inputData.dt;
+			io.DisplaySize = ImVec2((float)s_screenWidth, (float)s_screenHeight);
+			io.MouseDown[0] = inputData.mouseButtonL == Game::InputData::ButtonState::DOWN || inputData.mouseButtonL == Game::InputData::ButtonState::HOLD;
+			io.MouseDown[1] = inputData.mouseButtonR == Game::InputData::ButtonState::DOWN || inputData.mouseButtonR == Game::InputData::ButtonState::HOLD;
+			//io.MouseWheel = inputData.mouseWheelZoom;
+			io.MouseDrawCursor = true;
+			io.MousePos = ImVec2(inputData.mousePosition.x, inputData.mousePosition.y);
+			io.KeysDown[io.KeyMap[ImGuiKey_Enter]] = buttonsNowKey[VK_RETURN];
+			io.KeysDown[io.KeyMap[ImGuiKey_A]] = buttonsNowKey[0x41];
+			if (!buttonsPrevKey[0x41] && buttonsNowKey[0x41])
+				io.AddInputCharacter(io.KeyMap[ImGuiKey_A]);
+			ImGui::NewFrame();
+
+			for (int k = 0; k < 255; ++k)
+				buttonsPrevKey[k] = buttonsNowKey[k];
+
+			ImGui::SetNextWindowPos(ImVec2(200, 0), ImGuiSetCond_FirstUseEver);
+			ImGui::ShowTestWindow();
+
+			ImGui::Text("Key A: %d", io.KeysDown[io.KeyMap[ImGuiKey_A]]);
+			if (ImGui::Button("Aloha"))
+			{
+				// ...
+			}
+			static char buf[256];
+			ImGui::InputText("string", buf, 256);
+			static float f;
+			ImGui::SliderFloat("float", &f, 0.0f, 1.0f);
 			
 			renderData = Update(*gameData, inputData);
 

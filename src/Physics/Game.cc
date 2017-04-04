@@ -81,7 +81,7 @@ namespace Game
 		{
 			for (int j = 0; j < i + 1; ++j)
 			{
-				gameData->balls[c].pos.x = -50 - i * int(input.windowHalfSize.x*0.15f);
+				gameData->balls[c].pos.x = -50 - i * int(input.windowHalfSize.x*0.12f);
 				gameData->balls[c].pos.y = 0 - i * int(input.windowHalfSize.y*0.1f) + j * int(input.windowHalfSize.y*0.2f);
 				c++;
 			}

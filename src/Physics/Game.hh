@@ -29,6 +29,8 @@ namespace Game
 
 		ButtonState mouseButtonL;
 		ButtonState mouseButtonR;
+		//bool mouseWheelZooming;
+		float mouseWheelZoom;
 
 		internal_fn ButtonState ProcessKey(const bool &prevKey, const bool &nowKey);
 	};
@@ -55,6 +57,7 @@ namespace Game
 			BALL_15,
 			MAX_BALLS,
 			PIXEL,
+			DEARIMGUI,
 			COUNT
 		};
 

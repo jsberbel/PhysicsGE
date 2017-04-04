@@ -19,6 +19,8 @@
 
 // imgui library
 #include "imgui/imgui.h"
+#include "imgui/imconfig.h"
+#include "imgui/imgui_internal.h"
 #pragma comment (lib, "opengl32.lib")
 
 #pragma comment (lib, "opengl32.lib")
