@@ -1,11 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
-VisualStudioVersion = 15.0.26206.0
+VisualStudioVersion = 15.0.26403.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Asteroids", "src\Asteroids\Asteroids.vcxproj", "{A426BF88-50B9-40EE-B8A2-E0953833C0DA}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Physics", "src\Physics\Physics.vcxproj", "{18A1A5DF-60C8-4913-9B4B-31EAF7F51499}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "PoolGame", "src\PoolGame\PoolGame.vcxproj", "{18A1A5DF-60C8-4913-9B4B-31EAF7F51499}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
