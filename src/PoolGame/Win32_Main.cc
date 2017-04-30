@@ -2,6 +2,7 @@
 #include <map>
 #include <chrono>
 #include <string>
+#include "TaskManagerHelpers.hh"
 
 // global static vars
 global_var HGLRC   s_OpenGLRenderingContext		 { nullptr };
@@ -619,6 +620,31 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 									  static_cast<float>(inputData.windowHalfSize.y), // top
 									  -5.0f, 5.0f); // near // far
 
+	// TASK MANAGER
+	// init worker threads
+	unsigned int numHardwareCores = std::thread::hardware_concurrency();
+	numHardwareCores = numHardwareCores > 1 ? numHardwareCores - 1 : 1;
+	int numThreads = (numHardwareCores < Utilities::Profiler::MaxNumThreads - 1) ? numHardwareCores : Utilities::Profiler::MaxNumThreads - 1;
+	std::thread *workerThread = (std::thread*)alloca(sizeof(std::thread) * numThreads);
+
+	Utilities::TaskManager::JobContext mainThreadContext;// {nullptr, &blockAllocator, numThreads, -1};
+	mainThreadContext.scheduler = nullptr;
+	//mainThreadContext.profiler = &s_Profiler;
+	//mainThreadContext.allocator = &blockAllocator;
+	mainThreadContext.threadIndex = numThreads;
+	mainThreadContext.fiberIndex = -1;
+
+	Win32::s_JobScheduler.Init(numThreads);
+
+	for (int i = 0; i < numThreads; ++i)
+	{
+		new(&workerThread[i]) std::thread(Win32::WorkerThread, i);
+	}
+
+	std::mutex frameLockMutex;
+	std::condition_variable frameLockConditionVariable;
+	// --------
+
 	// INIT TIME
 	QueryPerformanceCounter(&l_LastFrameTime);
 
@@ -646,103 +672,116 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 			++numFramesElapsed;
 		}
 
-		inputData.dt = static_cast<double>(l_TicksPerFrame) / static_cast<double>(l_PerfCountFrequency);
-
-		Game::RenderData renderData;
-		for (int i = 0; i < numFramesElapsed; ++i)
+		// PROCESS MESSAGES
 		{
-			// PROCESS MESSAGES
+			MSG msg{};
+
+			while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
 			{
-				MSG msg {};
-
-				while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+				bool fHandled = false;
+				if (msg.message >= WM_MOUSEFIRST && msg.message <= WM_MOUSELAST)
+					fHandled = HandleMouse(msg, inputData);
+				else if (msg.message == WM_QUIT)
+					quit = fHandled = true;
+				else if (msg.message == WM_KEYDOWN)
 				{
-					bool fHandled = false;
-					if (msg.message >= WM_MOUSEFIRST && msg.message <= WM_MOUSELAST)
-						fHandled = HandleMouse(msg, inputData);
-					else if (msg.message == WM_QUIT)
-						quit = fHandled = true;	
-					else if (msg.message == WM_KEYDOWN)
-					{
-						buttonsNowKey[msg.wParam & 255] = true;
-						fHandled = true;
-						if (msg.wParam == VK_ESCAPE)
-							PostQuitMessage(0);
-					}
-					else if (msg.message == WM_KEYUP)
-					{
-						buttonsNowKey[msg.wParam & 255] = false;
-						fHandled = true;
-					}
-
-					HandleMouse(msg, inputData);
-
-					if (!fHandled)
-					{
-						TranslateMessage(&msg);
-						DispatchMessage(&msg);
-					}
+					buttonsNowKey[msg.wParam & 255] = true;
+					fHandled = true;
+					if (msg.wParam == VK_ESCAPE)
+						PostQuitMessage(0);
+				}
+				else if (msg.message == WM_KEYUP)
+				{
+					buttonsNowKey[msg.wParam & 255] = false;
+					fHandled = true;
 				}
 
-				if (s_windowResized)
+				HandleMouse(msg, inputData);
+
+				if (!fHandled)
 				{
-					inputData.windowHalfSize = { s_screenWidth / 2, s_screenHeight / 2 };
-					// create a orthogonal projection matrix
-					projection = glm::ortho(-static_cast<float>(inputData.windowHalfSize.x), // left
-													  static_cast<float>(inputData.windowHalfSize.x), // right
-													  -static_cast<float>(inputData.windowHalfSize.y), // bot
-													  static_cast<float>(inputData.windowHalfSize.y), // top
-													  -5.0f, 5.0f); // near // far
-					s_windowResized = false;
+					TranslateMessage(&msg);
+					DispatchMessage(&msg);
 				}
 			}
 
-			ImGuiIO& io = ImGui::GetIO();
-			io.DeltaTime = float(inputData.dt);
-			io.DisplaySize = ImVec2((float)s_screenWidth, (float)s_screenHeight);
-			io.MouseDown[0] = inputData.mouseButtonL == Game::InputData::ButtonState::DOWN || inputData.mouseButtonL == Game::InputData::ButtonState::HOLD;
-			io.MouseDown[1] = inputData.mouseButtonR == Game::InputData::ButtonState::DOWN || inputData.mouseButtonR == Game::InputData::ButtonState::HOLD;
-			//io.MouseWheel = inputData.mouseWheelZoom;
-			io.MouseDrawCursor = true;
-			io.MousePos = ImVec2(float(inputData.mousePosition.x), float(inputData.mousePosition.y));
-			io.KeysDown[io.KeyMap[ImGuiKey_Enter]] = buttonsNowKey[VK_RETURN];
-			io.KeysDown[io.KeyMap[ImGuiKey_A]] = buttonsNowKey[0x41];
-			if (!buttonsPrevKey[0x41] && buttonsNowKey[0x41])
-				io.AddInputCharacter(io.KeyMap[ImGuiKey_A]);
-			ImGui::NewFrame();
-
-			for (int k = 0; k < 255; ++k)
-				buttonsPrevKey[k] = buttonsNowKey[k];
-
-			ImGui::SetNextWindowPos(ImVec2(200, 0), ImGuiSetCond_FirstUseEver);
-			ImGui::ShowTestWindow();
-
-			//ImGui::Begin("Test");
-			//ImGui::Text("Key A: %d", io.KeysDown[io.KeyMap[ImGuiKey_A]]);
-			//if (ImGui::Button("Aloha"))
-			//{
-			//	// ...
-			//}
-			//static char buf[256];
-			//ImGui::InputText("string", buf, 256);
-			//static float f;
-			//ImGui::SliderFloat("float", &f, 0.0f, 1.0f);
-			//ImGui::End();
-			
-			Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::BEGIN, nullptr, "Update"); // hem de marcar una tasca per a que el profiler funcioni.
-			renderData = Update(*gameData, inputData);
-			Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::END, nullptr, "Update");
-
-			Utilities::Profiler::instance().DrawProfilerToImGUI(1);
-
-			LARGE_INTEGER l_UpdateTime;
-			QueryPerformanceCounter(&l_UpdateTime);
-
-			int64_t updateTicks = l_UpdateTime.QuadPart - l_CurrentTime.QuadPart;
-			double ticksPerUpdate = double(updateTicks) / (i + 1);
-			if (ticksPerUpdate * (i + 2) > l_TicksPerFrame)
-				break;
+			if (s_windowResized)
+			{
+				inputData.windowHalfSize = { s_screenWidth / 2, s_screenHeight / 2 };
+				// create a orthogonal projection matrix
+				projection = glm::ortho(-static_cast<float>(inputData.windowHalfSize.x), // left
+					static_cast<float>(inputData.windowHalfSize.x), // right
+					-static_cast<float>(inputData.windowHalfSize.y), // bot
+					static_cast<float>(inputData.windowHalfSize.y), // top
+					-5.0f, 5.0f); // near // far
+				s_windowResized = false;
+			}
 		}
+
+		Game::RenderData renderData;
+		bool hasFinishedUpdating = false;
+		auto updateJob = Utilities::TaskManager::CreateLambdaJob([&](int, const Utilities::TaskManager::JobContext &context) {
+			for (int i = 0; i < numFramesElapsed; ++i)
+			{
+				inputData.dt = static_cast<double>(l_TicksPerFrame) / static_cast<double>(l_PerfCountFrequency);
+
+				ImGuiIO& io = ImGui::GetIO();
+				io.DeltaTime = float(inputData.dt);
+				io.DisplaySize = ImVec2((float)s_screenWidth, (float)s_screenHeight);
+				io.MouseDown[0] = inputData.mouseButtonL == Game::InputData::ButtonState::DOWN || inputData.mouseButtonL == Game::InputData::ButtonState::HOLD;
+				io.MouseDown[1] = inputData.mouseButtonR == Game::InputData::ButtonState::DOWN || inputData.mouseButtonR == Game::InputData::ButtonState::HOLD;
+				//io.MouseWheel = inputData.mouseWheelZoom;
+				io.MouseDrawCursor = true;
+				io.MousePos = ImVec2(float(inputData.mousePosition.x), float(inputData.mousePosition.y));
+				io.KeysDown[io.KeyMap[ImGuiKey_Enter]] = buttonsNowKey[VK_RETURN];
+				io.KeysDown[io.KeyMap[ImGuiKey_A]] = buttonsNowKey[0x41];
+				if (!buttonsPrevKey[0x41] && buttonsNowKey[0x41])
+					io.AddInputCharacter(io.KeyMap[ImGuiKey_A]);
+				ImGui::NewFrame();
+
+				for (int k = 0; k < 255; ++k)
+					buttonsPrevKey[k] = buttonsNowKey[k];
+
+				ImGui::SetNextWindowPos(ImVec2(200, 0), ImGuiSetCond_FirstUseEver);
+				ImGui::ShowTestWindow();
+
+				// hem de marcar una tasca per a que el profiler funcioni.
+				inputData.dt = (float)l_TicksPerFrame / (float)l_PerfCountFrequency;
+
+				// UPDATE
+				Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::BEGIN, nullptr, "Update");
+				renderData = Update(*gameData, inputData, context);
+				Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::END, nullptr, "Update");
+
+				Utilities::Profiler::instance().DrawProfilerToImGUI(1);
+
+				inputData.mouseButtonL = Game::InputData::ButtonState::NONE;
+				inputData.mouseButtonR = Game::InputData::ButtonState::NONE;
+
+				LARGE_INTEGER l_UpdateTime;
+				QueryPerformanceCounter(&l_UpdateTime);
+				int64_t updateTicks = l_UpdateTime.QuadPart - l_CurrentTime.QuadPart;
+				double ticksPerUpdate = (double)updateTicks / (i + 1);
+				if (ticksPerUpdate * (i + 2) > l_TicksPerFrame)
+					break;
+			}
+			{
+				std::unique_lock<std::mutex> lock(frameLockMutex);
+				hasFinishedUpdating = true;
+			}
+			frameLockConditionVariable.notify_all();
+		}, "Update", 1, 0, Utilities::TaskManager::Job::Priority::HIGH, true);
+
+		Win32::s_JobScheduler.Do(&updateJob, nullptr);
+
+		{
+			std::unique_lock<std::mutex> lock(frameLockMutex);
+
+			while (!hasFinishedUpdating)
+				frameLockConditionVariable.wait(lock);
+		}
+
+		//Render();
 
 		glClearColor(0.f, 0.4f, 0.2f, 1.f);
 		glClear(GL_COLOR_BUFFER_BIT);

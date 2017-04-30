@@ -142,3 +142,31 @@ void __stdcall WorkerThread(int idx)
 	
 	Render();
 }
+
+
+{
+	auto job = CreateLambdaJob(
+		[](int taskIndex, const JobContext& context)
+	{
+		printf("%d\n", taskIndex);
+	},
+		"printer",
+		100// nº de vegades que es farà la tasca.
+		);
+
+	auto job2 = CreateLambdaBatchedJob(
+		[](int taskIndex, const JobContext& context)
+	{
+		printf("%d\n", taskIndex);
+	},
+		"batched printer",
+		20, // grups de 20 execucions
+		100 // nº TOTAL de vegades que es farà la tasca.
+		);
+
+
+	context.Do(&job);
+	context.DoAndWait(&job2);
+	context.Wait(&job);
+}
+		 

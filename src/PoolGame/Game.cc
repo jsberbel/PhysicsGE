@@ -134,7 +134,7 @@ namespace Game
 	//   2 - Crear una llista ordenada amb cada extrem anotat ( o1min , o1max, o2min, o3min, o2max, o3max )
 	//   3 - Des de cada "min" anotar tots els "min" que es trobin abans de trobar el "max" corresponent a aquest objecte.
 	//        aquests son les possibles colisions.
-	std::vector<GameData::PossibleCollission> SortAndSweep(std::vector<GameData::GameObject> & gameObjects)
+	std::vector<GameData::PossibleCollission> SortAndSweep(std::vector<GameData::GameObject> & gameObjects, const Utilities::TaskManager::JobContext &context)
 	{
 		struct Extreme
 		{
@@ -143,6 +143,7 @@ namespace Game
 			bool min;
 		};
 
+	#ifndef PARALLEL
 		std::vector<Extreme> extremes;
 
 		for (GameData::GameObject & go : gameObjects)
@@ -150,12 +151,29 @@ namespace Game
 			extremes.push_back(Extreme { &go, dot(go.GetExtreme({ -1.0, 0.0 }), { 1.0, 0.0 }), true });
 			extremes.push_back(Extreme { &go, dot(go.GetExtreme({ +1.0, 0.0 }), { 1.0, 0.0 }), false });
 		}
+	#else
+		std::vector<Extreme> extremes;
+		extremes.resize(gameObjects.size() * 2);
+
+		auto jobA = Utilities::TaskManager::CreateLambdaJob(
+			[&gameObjects, &extremes](int i, const Utilities::TaskManager::JobContext& context)
+			{
+				auto &go = gameObjects[i];
+
+				extremes[i * 2 + 0] = Extreme{ &go, glm::dot(go.GetExtreme({ -1.0, 0.0 }),{ 1.0, 0.0 }), true };
+				extremes[i * 2 + 1] = Extreme{ &go, glm::dot(go.GetExtreme({ +1,0 }),{ 1, 0 }), false };
+			},
+			"Sort & Sweep create list",
+			gameObjects.size());
+		context.DoAndWait(&jobA);
+	#endif
 
 		std::sort(extremes.begin(), extremes.end(), [] (const Extreme & lhs, const Extreme & rhs)
 		{
 			return (lhs.p < rhs.p);
 		});
 
+	#ifndef PARALLEL
 		std::vector<GameData::PossibleCollission> result;
 
 		for (int i = 0; i < extremes.size(); ++i)
@@ -171,6 +189,33 @@ namespace Game
 				}
 			}
 		}
+	#else
+		std::vector<GameData::PossibleCollission> resultRaw[Utilities::Profiler::MaxNumThreads];
+
+		auto jobB = Utilities::TaskManager::CreateLambdaJob(
+			[&extremes, &resultRaw](int i, const Utilities::TaskManager::JobContext& context)
+			{
+				if (extremes[i].min)
+				{
+					for (int j = i + 1; extremes[i].go != extremes[j].go; ++j)
+					{
+						if (extremes[j].min)
+						{
+							//int index = count[context.threadIndex]++;
+							resultRaw[context.threadIndex].push_back({ extremes[i].go, extremes[j].go });
+						}
+					}
+				}
+			},
+			"Sweep",
+			extremes.size()
+		);
+		context.DoAndWait(&jobB);
+
+		std::vector<GameData::PossibleCollission> result;
+		for (auto &pc : resultRaw)
+			result.insert(result.end(), pc.begin(), pc.end());
+	#endif
 		return result;
 	}
 
@@ -385,49 +430,46 @@ namespace Game
 		}
 	}
 
-	inline void UpdateBalls(std::vector<GameData::GameObject> &balls_, const InputData& inputData)
+	inline void UpdateBall(GameData::GameObject &ball_, const InputData& inputData)
 	{
-		for (auto& ball : balls_)
+		const double k0 = 0.8, k1 = 0.1, k2 = 0.01;
+
+		glm::dvec2 f = {};
+
+		double brakeValue = pow(k0, inputData.dt);
+
+		double speed = glm::length(ball_.vel);
+		if (speed > 0)
 		{
-			const double k0 = 0.8, k1 = 0.1, k2 = 0.01;
-
-			glm::dvec2 f = {};
-
-			double brakeValue = pow(k0, inputData.dt);
-
-			double speed = glm::length(ball.vel);
-			if (speed > 0)
-			{
-				double fv = k1 * speed + k2 * speed * speed;
-				glm::dvec2 friction = -fv * glm::normalize(ball.vel);
-				f += friction;
-			}
-
-			glm::dvec2 a = f * ball.invMass;
-
-			ball.pos += ball.vel * inputData.dt + f * (0.5 * inputData.dt * inputData.dt);
-			ball.vel = brakeValue * ball.vel + a * inputData.dt;
-			ball.col.position = ball.pos;
-
-			if (glm::length(ball.vel) < 1e-3)
-				ball.vel = { 0,0 };
-
-			if (ball.pos.x + ball.scale > inputData.windowHalfSize.x)
-				ball.pos.x = inputData.windowHalfSize.x - ball.scale,
-				ball.vel.x = -ball.vel.x;
-			if (ball.pos.x - ball.scale < -inputData.windowHalfSize.x)
-				ball.pos.x = -inputData.windowHalfSize.x + ball.scale,
-				ball.vel.x = -ball.vel.x;
-			if (ball.pos.y + ball.scale > inputData.windowHalfSize.y)
-				ball.pos.y = inputData.windowHalfSize.y - ball.scale,
-				ball.vel.y = -ball.vel.y;
-			if (ball.pos.y - ball.scale < -inputData.windowHalfSize.y)
-				ball.pos.y = -inputData.windowHalfSize.y + ball.scale,
-				ball.vel.y = -ball.vel.y;
+			double fv = k1 * speed + k2 * speed * speed;
+			glm::dvec2 friction = -fv * glm::normalize(ball_.vel);
+			f += friction;
 		}
+
+		glm::dvec2 a = f * ball_.invMass;
+
+		ball_.pos += ball_.vel * inputData.dt + f * (0.5 * inputData.dt * inputData.dt);
+		ball_.vel = brakeValue * ball_.vel + a * inputData.dt;
+		ball_.col.position = ball_.pos;
+
+		if (glm::length(ball_.vel) < 1e-3)
+			ball_.vel = { 0,0 };
+
+		if (ball_.pos.x + ball_.scale > inputData.windowHalfSize.x)
+			ball_.pos.x = inputData.windowHalfSize.x - ball_.scale,
+			ball_.vel.x = -ball_.vel.x;
+		if (ball_.pos.x - ball_.scale < -inputData.windowHalfSize.x)
+			ball_.pos.x = -inputData.windowHalfSize.x + ball_.scale,
+			ball_.vel.x = -ball_.vel.x;
+		if (ball_.pos.y + ball_.scale > inputData.windowHalfSize.y)
+			ball_.pos.y = inputData.windowHalfSize.y - ball_.scale,
+			ball_.vel.y = -ball_.vel.y;
+		if (ball_.pos.y - ball_.scale < -inputData.windowHalfSize.y)
+			ball_.pos.y = -inputData.windowHalfSize.y + ball_.scale,
+			ball_.vel.y = -ball_.vel.y;
 	}
 
-	RenderData Update(GameData & gameData, const InputData& inputData)
+	RenderData Update(GameData & gameData, const InputData& inputData, const Utilities::TaskManager::JobContext &context)
 	{
 		// PROCESS INPUT
 		if (inputData.mouseButtonL == InputData::ButtonState::DOWN || inputData.mouseButtonL == InputData::ButtonState::HOLD)
@@ -468,15 +510,27 @@ namespace Game
 			auto guard = Utilities::Profiler::instance().CreateProfileMarkGuard("Update Physics");
 
 			// 1 - Update posicions / velocitats
-			Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::BEGIN_FUNCTION, nullptr, "Update positions");
-			UpdateBalls(gameData.balls, inputData);
-			Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::END_FUNCTION, nullptr, "Update positions");
+			{
+			#ifndef PARALLEL
+				for (auto& ball : gameData.balls)
+					UpdateBall(ball, inputData);
+			#else
+				auto job = Utilities::TaskManager::CreateLambdaJob(
+					[&gameData, &inputData](int i, const Utilities::TaskManager::JobContext& context)
+					{
+						UpdateBall(gameData.balls[i], inputData);
+					},
+					"update positions job",
+					gameData.balls.size());
+				context.DoAndWait(&job);
+			#endif
+			}
 
 			// 2 - Generació de colisions
 
 			//   2.1 - Broad-Phase: "Sort & Sweep"
 			Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::BEGIN_FUNCTION, nullptr, "Sort & Sweep");
-			auto possibleCollisions = SortAndSweep(gameData.balls);
+			auto possibleCollisions = SortAndSweep(gameData.balls, context);
 			Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::END_FUNCTION, nullptr, "Sort & Sweep");
 
 			//   2.2 - Fine-Grained
@@ -491,9 +545,23 @@ namespace Game
 
 			// 3 - Resolució de colisions
 			Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::BEGIN_FUNCTION, nullptr, "Solve Collission Group");
-			for (auto & group : contactGroups)
-				SolveCollissionGroup(group);
-			Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::END_FUNCTION, nullptr, "Solve Collission Group");
+			{
+			#ifndef PARALLEL
+				for (auto & group : contactGroups)
+					SolveCollissionGroup(group);
+			#else
+				auto job = Utilities::TaskManager::CreateLambdaJob(
+					[&contactGroups](int i, const Utilities::TaskManager::JobContext& context)
+				{
+					SolveCollissionGroup(contactGroups[i]);
+				},
+					"group solver",
+					contactGroups.size() // nº de vegades que es farà la tasca.
+					);
+				context.DoAndWait(&job);
+			#endif
+				Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::END_FUNCTION, nullptr, "Solve Collission Group");
+			}
 		}
 
 		// RENDER BALLS

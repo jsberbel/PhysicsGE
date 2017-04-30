@@ -8,8 +8,8 @@ namespace Utilities
 	{
 		// classes que ens permetràn crear tasques amb lambdes de C++11
 		// mirar el final del fitxer
-		
-		
+
+
 		template<typename Lambda, bool has_context_call>
 		struct LambdaCaller
 		{
@@ -100,24 +100,24 @@ namespace Utilities
 //{
 //	auto job = CreateLambdaJob(
 //		[](int taskIndex, const JobContext& context)
-//		{
-//			printf("%d\n", taskIndex);
-//		},
+//	{
+//		printf("%d\n", taskIndex);
+//	},
 //		"printer",
 //		100// nº de vegades que es farà la tasca.
-//	);
-//	
+//		);
+//
 //	auto job2 = CreateLambdaBatchedJob(
 //		[](int taskIndex, const JobContext& context)
-//		{
-//			printf("%d\n", taskIndex);
-//		},
+//	{
+//		printf("%d\n", taskIndex);
+//	},
 //		"batched printer",
 //		20, // grups de 20 execucions
 //		100 // nº TOTAL de vegades que es farà la tasca.
-//	);
-//	
-//	
+//		);
+//
+//
 //	context.Do(&job);
 //	context.DoAndWait(&job2);
 //	context.Wait(&job);

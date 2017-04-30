@@ -2,6 +2,8 @@
 
 #include <chrono>
 
+#define PROFILER Utilities::Profiler::instance()
+
 namespace Utilities
 {
 	class Profiler
@@ -54,10 +56,10 @@ namespace Utilities
 			}
 		};
 
-	private:
-
 		static constexpr int ProfilerMarkerBufferSize = 16 * 1024;
-		static constexpr int MaxNumThreads = 10;
+		static constexpr int MaxNumThreads = 2;
+
+	private:
 
 		struct ProfileMarker
 		{

@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <limits>
+#include <cassert>
 
 namespace ThreadsafeStructures
 {
@@ -160,7 +161,7 @@ namespace ThreadsafeStructures
 		{
 			bool lockAquired = false;
 			while (!lock.compare_exchange_weak(lockAquired, true)) lockAquired = false;
-			
+
 			if (remover < 0)
 			{
 				lock.store(false);
@@ -174,7 +175,7 @@ namespace ThreadsafeStructures
 			if (remover < 0)
 				adder = -1;
 
-			nodes[nodeIndex] = Node{ T{}, free  };
+			nodes[nodeIndex] = Node{ T{}, free };
 			free = nodeIndex;
 			assert(free >= 0);
 			assert(free < Capacity);

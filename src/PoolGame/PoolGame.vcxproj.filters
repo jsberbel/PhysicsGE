@@ -33,9 +33,6 @@
     <ClCompile Include="..\..\dep\imgui\imgui_demo.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="TaskManager.cc">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="Profiler.cc">
       <Filter>Source Files</Filter>
     </ClCompile>
