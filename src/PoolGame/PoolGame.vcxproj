@@ -162,7 +162,6 @@
     <ClCompile Include="Game.cc" />
     <ClCompile Include="glew.c" />
     <ClCompile Include="Profiler.cc" />
-    <ClCompile Include="TaskManager.cc" />
     <ClCompile Include="Win32_Main.cc" />
   </ItemGroup>
   <ItemGroup>

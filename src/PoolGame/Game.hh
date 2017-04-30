@@ -8,6 +8,11 @@
 
 #define MAX_FPS 60
 
+#include "TaskManager.hh"
+#include "TaskManagerHelpers.hh"
+
+#define PARALLEL
+
 namespace Game
 {
 	struct GameData;
@@ -82,6 +87,6 @@ namespace Game
 	};
 
 	auto InitGamedata	  (const InputData & input)							 -> GameData*;
-	auto Update			  (GameData & gameData, const InputData & inputData) -> RenderData;
+	auto Update			  (GameData & gameData, const InputData & inputData, const Utilities::TaskManager::JobContext &context) -> RenderData;
 	auto FinalizeGameData (GameData *& gameData)							 -> void;
 }
