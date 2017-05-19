@@ -2,6 +2,7 @@
 #include <map>
 #include <chrono>
 #include <string>
+#include "Allocators.hpp"
 #include "TaskManagerHelpers.hh"
 
 // global static vars
@@ -373,7 +374,6 @@ inline void RenderDearImgui(const Win32::Renderer &renderer)
 	glBindBufferBase(GL_UNIFORM_BUFFER, 0, renderer.uniforms[Win32::Renderer::DearImgui]);
 	//glUseProgram(0); // You may want this if using this code in an OpenGL 3+ context
 
-
 	// Setup viewport, orthographic projection matrix
 	glViewport(0, 0, (GLsizei)fb_width, (GLsizei)fb_height);
 
@@ -381,9 +381,7 @@ inline void RenderDearImgui(const Win32::Renderer &renderer)
 	glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(ImVec2), (GLvoid*)&io.DisplaySize);
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-
 	auto texture = renderer.textures[static_cast<int>(Game::RenderData::TextureID::DEARIMGUI)];
-
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindVertexArray(renderer.vaos[Win32::Renderer::DearImgui].vao);
@@ -408,13 +406,10 @@ inline void RenderDearImgui(const Win32::Renderer &renderer)
 			else
 			{
 				if (pcmd->TextureId == nullptr)
-				{
 					glBindTexture(GL_TEXTURE_2D, texture);
-				}
 				else
-				{
 					glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)pcmd->TextureId);
-				}
+
 				glScissor((int)pcmd->ClipRect.x, (int)(fb_height - pcmd->ClipRect.w), (int)(pcmd->ClipRect.z - pcmd->ClipRect.x), (int)(pcmd->ClipRect.w - pcmd->ClipRect.y));
 				static_assert(sizeof(ImDrawIdx) == 2 || sizeof(ImDrawIdx) == 4, "indexes are 2 or 4 bytes long");
 				glDrawElements(GL_TRIANGLES, (GLsizei)pcmd->ElemCount, sizeof(ImDrawIdx) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT, idx_buffer);
@@ -490,7 +485,7 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 
 	// INIT SHADERS
 	Win32::Renderer renderer;
-	renderer.programs[0] = Win32::GenerateProgram(L"Simple.vs", L"Simple.fs");
+	renderer.programs[Win32::Renderer::GameScene] = Win32::GenerateProgram(L"Simple.vs", L"Simple.fs");
 	renderer.programs[Win32::Renderer::DearImgui] = Win32::GenerateProgram(L"DearImgui.vert", L"DearImgui.frag");
 
 	Win32::VertexTN vtxs[] {
@@ -503,7 +498,7 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 		0, 1, 2,
 		2, 1, 3
 	};
-	renderer.vaos[0] = CreateVertexArrayObject(vtxs, sizeof vtxs / sizeof Win32::VertexTN, idxs, sizeof idxs / sizeof uint16_t);
+	renderer.vaos[Win32::Renderer::GameScene] = CreateVertexArrayObject(vtxs, sizeof vtxs / sizeof Win32::VertexTN, idxs, sizeof idxs / sizeof uint16_t);
 
 	{
 		glGenVertexArrays(1, &renderer.vaos[Win32::Renderer::DearImgui].vao);
@@ -535,7 +530,7 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 
 	glGenBuffers(Win32::Renderer::UNIFORM_COUNT, renderer.uniforms);
 	{
-		glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[0]);
+		glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[Win32::Renderer::GameScene]);
 		glBufferData(  // sets the buffer content
 					 GL_UNIFORM_BUFFER,		// type of buffer
 					 sizeof Win32::InstanceData,		// size of the buffer content
@@ -585,8 +580,8 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 	bool buttonsPrevKey[255], buttonsNowKey[255];
 	memset(buttonsPrevKey, false, 255);
 	memset(buttonsNowKey, false, 255);
+	ImGuiIO& io = ImGui::GetIO();
 	{
-		ImGuiIO& io = ImGui::GetIO();
 		io.KeyMap[ImGuiKey_Tab] = VK_TAB;                     // Keyboard mapping. ImGui will use those indices to peek into the io.KeyDown[] array.
 		io.KeyMap[ImGuiKey_LeftArrow] = VK_LEFT;
 		io.KeyMap[ImGuiKey_RightArrow] = VK_RIGHT;
@@ -621,57 +616,45 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 									  -5.0f, 5.0f); // near // far
 
 	// TASK MANAGER
-	// init worker threads
-	unsigned int numHardwareCores = std::thread::hardware_concurrency();
-	numHardwareCores = numHardwareCores > 1 ? numHardwareCores - 1 : 1;
-	int numThreads = (numHardwareCores < Utilities::Profiler::MaxNumThreads - 1) ? numHardwareCores : Utilities::Profiler::MaxNumThreads - 1;
-	std::thread *workerThread = (std::thread*)alloca(sizeof(std::thread) * numThreads);
-
-	Utilities::TaskManager::JobContext mainThreadContext;// {nullptr, &blockAllocator, numThreads, -1};
-	mainThreadContext.scheduler = nullptr;
-	//mainThreadContext.profiler = &s_Profiler;
-	//mainThreadContext.allocator = &blockAllocator;
-	mainThreadContext.threadIndex = numThreads;
-	mainThreadContext.fiberIndex = -1;
-
-	Win32::s_JobScheduler.Init(numThreads);
-
-	for (int i = 0; i < numThreads; ++i)
+	int numThreads;
 	{
-		new(&workerThread[i]) std::thread(Win32::WorkerThread, i);
-	}
+		// init worker threads
+		unsigned int numHardwareCores = std::thread::hardware_concurrency();
+		numHardwareCores = numHardwareCores > 1 ? numHardwareCores - 1 : 1;
+		numThreads = (numHardwareCores < Utilities::Profiler::MaxNumThreads - 1) ? numHardwareCores : Utilities::Profiler::MaxNumThreads - 1;
+		std::thread *workerThread = (std::thread*)alloca(sizeof(std::thread) * numThreads);
 
+		size_t totalMemory2 = 1 * 1024 * 1024 * 1024; // 1 GB :DDDDDDDDDDD
+		void* baseAddress2 = reinterpret_cast<void*>(0x30000000000);
+		uint8_t* gameMemoryBlock2 = reinterpret_cast<uint8_t*>(VirtualAlloc(baseAddress2,
+															   totalMemory2,
+															   MEM_RESERVE | MEM_COMMIT,
+															   PAGE_READWRITE));
+
+		Utilities::DefaultAllocator blockAllocator(gameMemoryBlock2, totalMemory2);
+
+		Utilities::TaskManager::JobContext mainThreadContext;// {nullptr, &blockAllocator, numThreads, -1};
+		mainThreadContext.scheduler = nullptr;
+		mainThreadContext.profiler = &Win32::s_Profiler;
+		mainThreadContext.allocator = &blockAllocator;
+		mainThreadContext.threadIndex = numThreads;
+		mainThreadContext.fiberIndex = -1;
+
+		Win32::s_JobScheduler.Init(numThreads, &Win32::s_Profiler, &blockAllocator);
+
+		for (int i = 0; i < numThreads; ++i)
+		{
+			new(&workerThread[i]) std::thread(Win32::WorkerThread, i);
+		}
+	}
 	std::mutex frameLockMutex;
 	std::condition_variable frameLockConditionVariable;
-	// --------
 
 	// INIT TIME
 	QueryPerformanceCounter(&l_LastFrameTime);
 
 	bool quit{ false };
 	do {
-		LARGE_INTEGER l_CurrentTime;
-		QueryPerformanceCounter(&l_CurrentTime);
-		//float Result = ((float)(l_CurrentTime.QuadPart - l_LastFrameTime.QuadPart) / (float)l_PerfCountFrequency);
-
-		if (l_LastFrameTime.QuadPart + l_TicksPerFrame > l_CurrentTime.QuadPart)
-		{
-			int64_t ticksToSleep = l_LastFrameTime.QuadPart + l_TicksPerFrame - l_CurrentTime.QuadPart;
-			int64_t msToSleep = 1000 * ticksToSleep / l_PerfCountFrequency;
-			if (msToSleep > 0)
-			{
-				Sleep(static_cast<DWORD>(msToSleep));
-			}
-			continue;
-		}
-		
-		int numFramesElapsed = 0;
-		while (l_LastFrameTime.QuadPart + l_TicksPerFrame <= l_CurrentTime.QuadPart)
-		{
-			l_LastFrameTime.QuadPart += l_TicksPerFrame;
-			++numFramesElapsed;
-		}
-
 		// PROCESS MESSAGES
 		{
 			MSG msg{};
@@ -714,49 +697,42 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 					-static_cast<float>(inputData.windowHalfSize.y), // bot
 					static_cast<float>(inputData.windowHalfSize.y), // top
 					-5.0f, 5.0f); // near // far
+				io.DisplaySize = ImVec2((float)s_screenWidth, (float)s_screenHeight);
 				s_windowResized = false;
 			}
 		}
 
+		LARGE_INTEGER l_CurrentTime;
+		QueryPerformanceCounter(&l_CurrentTime);
+		//float Result = ((float)(l_CurrentTime.QuadPart - l_LastFrameTime.QuadPart) / (float)l_PerfCountFrequency);
+
+		if (l_LastFrameTime.QuadPart + l_TicksPerFrame > l_CurrentTime.QuadPart)
+		{
+			int64_t ticksToSleep = l_LastFrameTime.QuadPart + l_TicksPerFrame - l_CurrentTime.QuadPart;
+			int64_t msToSleep = 1000 * ticksToSleep / l_PerfCountFrequency;
+			if (msToSleep > 0)
+				Sleep(static_cast<DWORD>(msToSleep));
+			continue;
+		}
+
+		int numFramesElapsed = 0;
+		while (l_LastFrameTime.QuadPart + l_TicksPerFrame <= l_CurrentTime.QuadPart)
+		{
+			l_LastFrameTime.QuadPart += l_TicksPerFrame;
+			++numFramesElapsed;
+		}
+
 		Game::RenderData renderData;
 		bool hasFinishedUpdating = false;
-		auto updateJob = Utilities::TaskManager::CreateLambdaJob([&](int, const Utilities::TaskManager::JobContext &context) {
+
+		auto updateJob = Utilities::TaskManager::CreateLambdaJob([&](int, const Utilities::TaskManager::JobContext &context)
+		{
 			for (int i = 0; i < numFramesElapsed; ++i)
 			{
 				inputData.dt = static_cast<double>(l_TicksPerFrame) / static_cast<double>(l_PerfCountFrequency);
-
-				ImGuiIO& io = ImGui::GetIO();
-				io.DeltaTime = float(inputData.dt);
-				io.DisplaySize = ImVec2((float)s_screenWidth, (float)s_screenHeight);
-				io.MouseDown[0] = inputData.mouseButtonL == Game::InputData::ButtonState::DOWN || inputData.mouseButtonL == Game::InputData::ButtonState::HOLD;
-				io.MouseDown[1] = inputData.mouseButtonR == Game::InputData::ButtonState::DOWN || inputData.mouseButtonR == Game::InputData::ButtonState::HOLD;
-				//io.MouseWheel = inputData.mouseWheelZoom;
-				io.MouseDrawCursor = true;
-				io.MousePos = ImVec2(float(inputData.mousePosition.x), float(inputData.mousePosition.y));
-				io.KeysDown[io.KeyMap[ImGuiKey_Enter]] = buttonsNowKey[VK_RETURN];
-				io.KeysDown[io.KeyMap[ImGuiKey_A]] = buttonsNowKey[0x41];
-				if (!buttonsPrevKey[0x41] && buttonsNowKey[0x41])
-					io.AddInputCharacter(io.KeyMap[ImGuiKey_A]);
-				ImGui::NewFrame();
-
-				for (int k = 0; k < 255; ++k)
-					buttonsPrevKey[k] = buttonsNowKey[k];
-
-				ImGui::SetNextWindowPos(ImVec2(200, 0), ImGuiSetCond_FirstUseEver);
-				ImGui::ShowTestWindow();
-
-				// hem de marcar una tasca per a que el profiler funcioni.
-				inputData.dt = (float)l_TicksPerFrame / (float)l_PerfCountFrequency;
-
+				
 				// UPDATE
-				Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::BEGIN, nullptr, "Update");
 				renderData = Update(*gameData, inputData, context);
-				Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::END, nullptr, "Update");
-
-				Utilities::Profiler::instance().DrawProfilerToImGUI(1);
-
-				inputData.mouseButtonL = Game::InputData::ButtonState::NONE;
-				inputData.mouseButtonR = Game::InputData::ButtonState::NONE;
 
 				LARGE_INTEGER l_UpdateTime;
 				QueryPerformanceCounter(&l_UpdateTime);
@@ -770,7 +746,7 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 				hasFinishedUpdating = true;
 			}
 			frameLockConditionVariable.notify_all();
-		}, "Update", 1, 0, Utilities::TaskManager::Job::Priority::HIGH, true);
+		}, "Game Update", 1, 0, Utilities::TaskManager::Job::Priority::HIGH, true);
 
 		Win32::s_JobScheduler.Do(&updateJob, nullptr);
 
@@ -781,7 +757,25 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 				frameLockConditionVariable.wait(lock);
 		}
 
-		//Render();
+		// IMGUI
+		{
+			io.DeltaTime = float(inputData.dt);
+			io.MouseDown[0] = inputData.mouseButtonL == Game::InputData::ButtonState::DOWN || inputData.mouseButtonL == Game::InputData::ButtonState::HOLD;
+			io.MouseDown[1] = inputData.mouseButtonR == Game::InputData::ButtonState::DOWN || inputData.mouseButtonR == Game::InputData::ButtonState::HOLD;
+			//io.MouseWheel = inputData.mouseWheelZoom;
+			//io.MouseDrawCursor = true;
+			io.MousePos = ImVec2(float(inputData.mousePosition.x), float(inputData.mousePosition.y));
+			/*io.KeysDown[io.KeyMap[ImGuiKey_Enter]] = buttonsNowKey[VK_RETURN];
+			io.KeysDown[io.KeyMap[ImGuiKey_A]] = buttonsNowKey[0x41];
+			if (!buttonsPrevKey[0x41] && buttonsNowKey[0x41])
+				io.AddInputCharacter(io.KeyMap[ImGuiKey_A]);*/
+			ImGui::NewFrame();
+
+			/*for (int k = 0; k < 255; ++k)
+				buttonsPrevKey[k] = buttonsNowKey[k];*/
+
+			Win32::s_Profiler.DrawProfilerToImGUI(numThreads);
+		}
 
 		glClearColor(0.f, 0.4f, 0.2f, 1.f);
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -795,7 +789,7 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 			glBindTexture(GL_TEXTURE_2D, renderer.textures[static_cast<int>(sprite.texture)]); // get the right texture
 
 			// create the model matrix, with a scale and a translation.
-			glm::mat4 model {
+			glm::mat4 model{
 				glm::scale(
 					glm::rotate(
 						glm::translate(glm::mat4(), glm::vec3(sprite.position, 0.f)),
@@ -804,7 +798,7 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 			};
 
 			// the transform is the addition of the model transformation and the projection
-			Win32::InstanceData instanceData { projection * model , glm::vec4(sprite.color, 1) };
+			Win32::InstanceData instanceData{ projection * model , glm::vec4(sprite.color, 1) };
 
 			glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[0]);
 			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Win32::InstanceData), static_cast<GLvoid*>(&instanceData));
@@ -814,6 +808,10 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 			glBindVertexArray(renderer.vaos[0].vao);
 			glDrawElements(GL_TRIANGLES, renderer.vaos[0].numIndices, GL_UNSIGNED_SHORT, nullptr);
 		}
+
+		// RENDER IMGUI
+		ImGui::SetNextWindowPos(ImVec2(inputData.windowHalfSize.x, inputData.windowHalfSize.y), ImGuiSetCond_FirstUseEver);
+		//ImGui::ShowTestWindow();
 
 		ImGui::Render();
 		RenderDearImgui(renderer);

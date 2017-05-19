@@ -28,12 +28,12 @@ namespace Utilities
 
 
 		// funció principal que assigna la feina per cada thread
-		inline void JobScheduler::RunScheduler(int idx)
+		inline void JobScheduler::RunScheduler(int idx, Profiler &profiler)
 		{
 			short fibersOnWait[NumFibers]; // stack de fibers que estan esperant a altres per a continuar
 			int numFibersOnWait = 0; // 
 
-									 // ens guardem quan va acabar l'última tasca que vam poder executar per a dormir si no en trobem cap més en prou temps
+			// ens guardem quan va acabar l'última tasca que vam poder executar per a dormir si no en trobem cap més en prou temps
 			std::chrono::high_resolution_clock::time_point lastJobCompletedTime = std::chrono::high_resolution_clock::now();
 
 			while (runTasks)
@@ -50,7 +50,7 @@ namespace Utilities
 						fiberContext.fiberWaitingForJobCompletion = nullptr; // marquem que la tasca no espera a ningú
 
 																			 // marquem al profiler que la tasca continua la seva feina
-						PROFILER.AddProfileMark(Profiler::MarkerType::RESUME_FROM_PAUSE, (void*)fiberIndex, fiberContext.job->jobName, idx, fiberContext.job->systemID);
+						profiler.AddProfileMark(Profiler::MarkerType::RESUME_FROM_PAUSE, (void*)fiberIndex, fiberContext.job->jobName, idx, fiberContext.job->systemID);
 
 						// entrem a la Fiber en qüestió
 						SwitchToFiber(fibers[fiberIndex]);
@@ -59,7 +59,7 @@ namespace Utilities
 																						  // mirem si la tasca ha completat o està esperant alguna cosa
 						if (fiberContext.fiberWaitingForJobCompletion == nullptr)
 						{
-							PROFILER.AddProfileMark(Profiler::MarkerType::END, (void*)fiberIndex, fiberContext.job->jobName, idx, fiberContext.job->systemID);
+							profiler.AddProfileMark(Profiler::MarkerType::END, (void*)fiberIndex, fiberContext.job->jobName, idx, fiberContext.job->systemID);
 
 							// wake up any thread that may be idle, as a prerequisite may be finished
 							NotifyWaitingThreads();
@@ -81,7 +81,7 @@ namespace Utilities
 						else
 						{
 							// la tasca continua esperant alguna cosa, ho marquem i no toquem res més.
-							PROFILER.AddProfileMark(
+							profiler.AddProfileMark(
 								(fiberContext.fiberWaitingForJobCompletion == fiberContext.job)
 								? Profiler::MarkerType::PAUSE_WAIT_FOR_QUEUE_SPACE
 								: Profiler::MarkerType::PAUSE_WAIT_FOR_JOB,
@@ -107,7 +107,7 @@ namespace Utilities
 						fiberContext.threadIndex = idx;
 						fiberContext.fiberWaitingForJobCompletion = nullptr;
 
-						PROFILER.AddProfileMark(Profiler::MarkerType::BEGIN, (void*)fiberIndex, fiberContext.job->jobName, idx, fiberContext.job->systemID);
+						profiler.AddProfileMark(Profiler::MarkerType::BEGIN, (void*)fiberIndex, fiberContext.job->jobName, idx, fiberContext.job->systemID);
 
 						// entrem a la Fiber en qüestió
 						SwitchToFiber(fibers[fiberIndex]);
@@ -116,7 +116,7 @@ namespace Utilities
 																						  // mirem si la tasca ha completat o està esperant alguna cosa
 						if (fiberContext.fiberWaitingForJobCompletion == nullptr)
 						{
-							PROFILER.AddProfileMark(Profiler::MarkerType::END, (void*)fiberIndex, fiberContext.job->jobName, idx, fiberContext.job->systemID);
+							profiler.AddProfileMark(Profiler::MarkerType::END, (void*)fiberIndex, fiberContext.job->jobName, idx, fiberContext.job->systemID);
 
 							// wake up any thread that may be idle, as a prerequisite may be finished
 							NotifyWaitingThreads();
@@ -131,7 +131,7 @@ namespace Utilities
 						}
 						else
 						{
-							PROFILER.AddProfileMark(
+							profiler.AddProfileMark(
 								(fiberContext.fiberWaitingForJobCompletion == fiberContext.job)
 								? Profiler::MarkerType::PAUSE_WAIT_FOR_QUEUE_SPACE
 								: Profiler::MarkerType::PAUSE_WAIT_FOR_JOB,
@@ -151,9 +151,9 @@ namespace Utilities
 				using namespace std::chrono_literals;
 				if (usSinceLastCompletedJob > 500us)
 				{
-					PROFILER.AddProfileMark(Profiler::MarkerType::BEGIN_IDLE, nullptr, "Idle", idx);
+					profiler.AddProfileMark(Profiler::MarkerType::BEGIN_IDLE, nullptr, "Idle", idx);
 					WaitForNotification(idx);
-					PROFILER.AddProfileMark(Profiler::MarkerType::END_IDLE, nullptr, nullptr, idx);
+					profiler.AddProfileMark(Profiler::MarkerType::END_IDLE, nullptr, nullptr, idx);
 
 					lastJobCompletedTime = std::chrono::high_resolution_clock::now();
 				}

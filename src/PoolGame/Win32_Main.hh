@@ -63,6 +63,7 @@ namespace Win32
 	struct Renderer
 	{
 		static constexpr int BuffersSize { 0x10000 };
+		static constexpr int GameScene { 0x00 };
 		static constexpr int DearImgui { 0x01 };
 
 		enum {
@@ -120,7 +121,9 @@ namespace Win32
 			return ::GetFiberData();
 		}
 	};
+
 	WinJobScheduler s_JobScheduler;
+	Utilities::Profiler s_Profiler;
 
 	inline void SetThreadName(unsigned long dwThreadID, const char* threadName)
 	{
@@ -153,7 +156,7 @@ namespace Win32
 	void __stdcall WorkerThread(int idx)
 	{
 		{
-			char buffer[128] = { "Worker Thread " };
+			char buffer[] = { "Worker Thread " };
 			_itoa(idx, &buffer[strlen(buffer)], 10);
 			SetThreadName(GetCurrentThreadId(), buffer);
 
@@ -163,8 +166,7 @@ namespace Win32
 
 		s_JobScheduler.SetRootFiber(ConvertThreadToFiber(nullptr), idx);
 
-
-		s_JobScheduler.RunScheduler(idx);
+		s_JobScheduler.RunScheduler(idx, s_Profiler);
 	}
 }
 

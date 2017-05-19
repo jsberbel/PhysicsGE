@@ -2,15 +2,10 @@
 #include <atomic>
 #include "imgui/imgui.h"
 #include "imgui/imconfig.h"
+#include <string>
 
 namespace Utilities
 {
-	Profiler& Profiler::instance()
-	{
-		static Profiler profiler;
-		return profiler;
-	}
-
 	// Cridar aquesta funció cada cop que volguem registrar una marca al profiler.
 	// emparellar cada BEGIN_* amb un END_* i cada PAUSE_* amb un RESUME_*. Els BEGIN_FUNCTION/END_FUNCTION han d'anar aniuats i dins de begin/end
 	inline void Profiler::AddProfileMark(MarkerType reason, const void* identifier, const char* functionName, int threadId, int systemID)
@@ -40,13 +35,12 @@ namespace Utilities
 		if (ImGui::Begin("Profiler"))
 		{
 			ImGui::Checkbox("Record", &recordNewFrame);
-			ImGui::SliderFloat("Scale", &millisecondLength, 20, 10000, "%.3f", 2);
+			ImGui::SliderFloat("Scale", &millisecondLength, 20, 10000, "%.3f", 5);
 
 			ImGui::BeginChild("scrolling", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
 
 			ImDrawList* draw_list = ImGui::GetWindowDrawList();
 
-			// busquem els temps mínims i màxims del frame per a colocar les coses al seu voltant
 			std::chrono::high_resolution_clock::time_point earliestTimePoint;
 			std::chrono::high_resolution_clock::time_point latestTimePoint;
 			bool earliestInitialized = false;
@@ -80,7 +74,6 @@ namespace Utilities
 				}
 			}
 
-			// limitem les coses a 1s per no forçar massa l'ImGUI
 			auto maxMs = std::chrono::duration_cast<std::chrono::milliseconds>(latestTimePoint - earliestTimePoint).count() + 2;
 
 			if (maxMs > 1000)
@@ -88,7 +81,6 @@ namespace Utilities
 				maxMs = 1000;
 			}
 
-			// pintem llegendes orientatives.
 			float offset = 50;
 			ImVec2 cursor = ImGui::GetCursorScreenPos();
 			for (int n = 0; n < maxMs; n++)
@@ -109,17 +101,19 @@ namespace Utilities
 				draw_list->AddLine(cursor, ImVec2(cursor.x, cursor.y + 400), ImColor::HSV(hue, 1, 1), 1.0f);
 			}
 
-			// funció per a pintar 1 periode
-			auto DrawPeriod = [this, earliestTimePoint, offset] (int index, const ProfileMarker &dataMarker, const ProfileMarker &beginMarker, const ProfileMarker &endMarker)
+			auto DrawPeriod = [this, earliestTimePoint, offset](int index, const ProfileMarker &dataMarker, const ProfileMarker &beginMarker, const ProfileMarker &endMarker, std::chrono::high_resolution_clock::duration excTime = std::chrono::high_resolution_clock::duration())
 			{
 				std::chrono::high_resolution_clock::duration fromFrameStart = beginMarker.timePoint - earliestTimePoint;
 				std::chrono::high_resolution_clock::duration fromFrameEnd = endMarker.timePoint - earliestTimePoint;
 				std::chrono::high_resolution_clock::duration markDuration = endMarker.timePoint - beginMarker.timePoint;
+				std::chrono::high_resolution_clock::duration inclusiveDuration = endMarker.timePoint - dataMarker.timePoint;
 				// show
 
 				auto fromFrameStartMs = std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(fromFrameStart);
 				auto fromFrameEndMs = std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(fromFrameEnd);
 				auto markDurationMs = std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(markDuration);
+				auto exclusiveDurationMs = std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(excTime);
+				auto inclusiveDurationMs = std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(inclusiveDuration);
 
 				float beginPosition = fromFrameStartMs.count() > 0 ? fromFrameStartMs.count() * millisecondLength : 0;
 				float length = (fromFrameStartMs.count() > 0 ? markDurationMs.count() : fromFrameEndMs.count()) * millisecondLength;
@@ -136,12 +130,10 @@ namespace Utilities
 				if (length < 5.0f)
 					length = 5.0f;
 
-				ImGui::SameLine(); // sempre a la mateixa línea de l'anterior
+				ImGui::SameLine();
 
 				ImGui::PushID(index);
-				// random color. IDLE always red
 				float hue = dataMarker.IsIdleMark() ? 0 : ((reinterpret_cast<uintptr_t>(dataMarker.identifier) * 19) % 97) / 97.f; //((beginIndex - profilerNextReadIndex[l] + ProfilerMarkerBufferSize) % ProfilerMarkerBufferSize) * 0.05f; // TODO from job type
-																																	//hue = dataMarker.IsFunctionMark() ? float(rand()) / float(RAND_MAX) : hue;
 				ImGui::PushStyleColor(ImGuiCol_Button, ImColor::HSV(hue, 0.6f, 0.6f));
 				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImColor::HSV(hue, 0.7f, 0.7f));
 				ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImColor::HSV(hue, 0.8f, 0.8f));
@@ -155,22 +147,23 @@ namespace Utilities
 						: (endMarker.type == MarkerType::PAUSE_WAIT_FOR_QUEUE_SPACE) ? "\nPAUSED adding jobs"
 						: "";
 
+					std::string fullTime = exclusiveDurationMs.count() <= 0 ? "" :
+						std::string("\nExclusive Time: ") + std::to_string(exclusiveDurationMs.count()) + "ms"
+						+ "\nInclusive Time: " + std::to_string(inclusiveDurationMs.count()) + "ms";
 
-					ImGui::SetTooltip("%s\nbegins: %fms\nends: %fms\nduration: %fms%s", dataMarker.jobName, fromFrameStartMs.count(), fromFrameEndMs.count(), markDurationMs.count(), additionalInfo);
+					ImGui::SetTooltip("%s\nbegins: %fms\nends: %fms\nduration: %fms%s%s", dataMarker.jobName, fromFrameStartMs.count(), fromFrameEndMs.count(), markDurationMs.count(), fullTime.c_str(), additionalInfo);
 				}
 				ImGui::PopStyleColor(3);
 
 				ImGui::PopID();
 			};
 
-			// pintem l'ús per cada thread
 			for (int l = 0; l < numThreads; l++)
 			{
 				ImGui::PushID(l);
 
 				ImGui::LabelText("", "core %d", l);
 
-				// pintar les tasques és fàcil: des d'un BEGIN/RESUME fins al primer PAUSE/END que trobem
 				for (int beginIndex = profilerNextReadIndex[l]; beginIndex != profilerNextWriteIndex[l]; beginIndex = (beginIndex + 1) % ProfilerMarkerBufferSize)
 				{
 					const ProfileMarker &beginMarker = profilerData[l][beginIndex];
@@ -190,30 +183,23 @@ namespace Utilities
 					}
 				}
 
-				// pintar les funcions és més complicat doncs cal aniuar-les correctament i tenir en compte que es poden tallar si la tasca s'adorm.
-				// afortunadament una tasca mai es mourà de thread i podem fer servir això per veure el seu nivell
 				int depth = 0;
 				bool functionFound;
 				do
 				{
-					// la idea és pintar nivell a nivell de funcions fins a arribar a un nivell on no hi hagi cap funció.
-
 					functionFound = false;
 
 					for (int beginIndex = profilerNextReadIndex[l]; beginIndex != profilerNextWriteIndex[l]; beginIndex = (beginIndex + 1) % ProfilerMarkerBufferSize)
 					{
 						const ProfileMarker &beginMarker = profilerData[l][beginIndex];
-						if (beginMarker.type == MarkerType::BEGIN_FUNCTION) // el marcador actual és l'inici d'una funció. Cal dibuixar-la sencera.
+						if (beginMarker.type == MarkerType::BEGIN_FUNCTION)
 						{
 							int currentDepth = 0;
 							bool inRelevantFiber = true;
 							const ProfileMarker *lastInterruption = nullptr;
-							// el primer pas és trobar quina profunditat té aquesta funció. 
-							// Per això tirarem enrere fins al BEGIN corresponent a la tasca on és la funció, tallant convenientment 
-							// a les pauses de la tasca i contant quants BEGIN_FUNCTION i END_FUNCTION hi ha
 							for (
 								int backIndex = (beginIndex == 0) ? ProfilerMarkerBufferSize : (beginIndex - 1);
-								(backIndex + 1) % ProfilerMarkerBufferSize != profilerNextReadIndex[l];
+								((backIndex == 0) ? ProfilerMarkerBufferSize : (backIndex - 1)) != profilerNextReadIndex[l];
 								backIndex = (backIndex == 0) ? ProfilerMarkerBufferSize : (backIndex - 1)
 								)
 							{
@@ -230,7 +216,7 @@ namespace Utilities
 									}
 									else if (backMarker.type == MarkerType::BEGIN)
 									{
-										assert(currentDepth >= 0);
+										//assert(currentDepth >= 0);
 										break;
 									}
 									else if (backMarker.IsBeginMark())
@@ -246,21 +232,18 @@ namespace Utilities
 								}
 							}
 
-							if (currentDepth == depth) // si la funció és a la profunditat que busquem, la pintem.
+							if (currentDepth == depth)
 							{
+								long long exclusiveTime = 0;
+
 								if (!functionFound)
 								{
-									// pintem una llegenda (i fem una nova línea) si és la primera funció que trobem a aquest nivell.
 									ImGui::LabelText("", "stack %d", depth);
 									functionFound = true;
 								}
-								const ProfileMarker *lastInterruptionBegin = nullptr, *lastInterruptionEnd = nullptr;
-								for (int endIndex = beginIndex + 1; endIndex != profilerNextWriteIndex[l]; endIndex = (endIndex + 1) % ProfilerMarkerBufferSize)
+								const ProfileMarker *lastInterruptionBegin = nullptr, *lastInterruptionEnd = nullptr, *firstInterruptionBegin = nullptr;
+								for (int endIndex = (beginIndex + 1) % ProfilerMarkerBufferSize; endIndex != profilerNextWriteIndex[l]; endIndex = (endIndex + 1) % ProfilerMarkerBufferSize)
 								{
-									// aquí busquem el END_FUNCTION corresponent a la funció que hem començat.
-									// cada vegada que trobem un tall de la tasca hem de pintar la part anterior d'aquesta funció
-									// i guardar-nos on continua.
-
 									const ProfileMarker &endMarker = profilerData[l][endIndex];
 									int idDisc = ProfilerMarkerBufferSize;
 									if (endMarker.type == MarkerType::END_FUNCTION && beginMarker.identifier == endMarker.identifier)
@@ -272,10 +255,13 @@ namespace Utilities
 										else
 										{
 											assert(lastInterruptionEnd != nullptr);
+											assert(firstInterruptionBegin != nullptr);
 
-											DrawPeriod(beginIndex, beginMarker, beginMarker, *lastInterruptionBegin);
+											exclusiveTime += (endMarker.timePoint - lastInterruptionEnd->timePoint).count();
+
+											DrawPeriod(beginIndex, beginMarker, beginMarker, *firstInterruptionBegin, std::chrono::high_resolution_clock::duration(exclusiveTime));
 											ImGui::PushID(idDisc);
-											DrawPeriod(beginIndex, beginMarker, *lastInterruptionEnd, endMarker);
+											DrawPeriod(endIndex, beginMarker, *lastInterruptionEnd, endMarker, std::chrono::high_resolution_clock::duration(exclusiveTime));
 											ImGui::PopID();
 										}
 										break;
@@ -288,10 +274,21 @@ namespace Utilities
 									{
 										if (lastInterruptionBegin != nullptr)
 										{
+											exclusiveTime += (endMarker.timePoint - lastInterruptionEnd->timePoint).count();
+
+											assert(firstInterruptionBegin != nullptr);
 											ImGui::PushID(idDisc);
-											DrawPeriod(beginIndex, beginMarker, *lastInterruptionEnd, *lastInterruptionBegin);
+											DrawPeriod(endIndex, beginMarker, *lastInterruptionEnd, endMarker, std::chrono::high_resolution_clock::duration(exclusiveTime));
 											ImGui::PopID();
 											++idDisc;
+										}
+										else
+										{
+											assert(exclusiveTime == 0);
+											exclusiveTime = (endMarker.timePoint - beginMarker.timePoint).count();
+
+											assert(firstInterruptionBegin == nullptr);
+											firstInterruptionBegin = &endMarker;
 										}
 										lastInterruptionBegin = &endMarker;
 									}
@@ -305,7 +302,7 @@ namespace Utilities
 
 
 				if (recordNewFrame)
-					profilerNextReadIndex[l] = profilerNextWriteIndex[l]; // marquem fins on ha llegit el profiler per no pintar-ho al següent frame.
+					profilerNextReadIndex[l] = profilerNextWriteIndex[l];
 
 				ImGui::PopID();
 

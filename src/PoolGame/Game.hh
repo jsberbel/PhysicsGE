@@ -8,10 +8,9 @@
 
 #define MAX_FPS 60
 
-#include "TaskManager.hh"
-#include "TaskManagerHelpers.hh"
+//#define PARALLEL
 
-#define PARALLEL
+#include "TaskManager.hh"
 
 namespace Game
 {
@@ -83,10 +82,9 @@ namespace Game
 		};
 
 		std::vector<Sprite> sprites;
-		std::vector<Text> texts;
 	};
 
-	auto InitGamedata	  (const InputData & input)							 -> GameData*;
-	auto Update			  (GameData & gameData, const InputData & inputData, const Utilities::TaskManager::JobContext &context) -> RenderData;
-	auto FinalizeGameData (GameData *& gameData)							 -> void;
+	GameData* InitGamedata (const InputData & input);
+	RenderData Update (GameData & gameData, const InputData & inputData, const Utilities::TaskManager::JobContext &context);
+	void FinalizeGameData (GameData *& gameData);
 }

@@ -8,66 +8,66 @@
 
 #include "Profiler.hh"
 
+#include "TaskManagerHelpers.hh"
+#include <stack>
+
 namespace Game
 {
 	struct GameData
 	{
-		struct Line
-		{
-			glm::dvec2 normal;
-			double distance;
-		};
-
-		struct Circle
-		{
-			glm::dvec2 position;
-			double radius;
-		};
-
-		struct GameObject // Ball
-		{
-			glm::dvec2 pos;
-			glm::dvec2 vel;
-			double scale;
-			Circle col;
-			double invMass;
-			inline glm::dvec2 GetExtreme(const glm::dvec2 & extreme) const
-			{
-				return pos + scale*extreme;
-			}
-		};
-
-		std::vector<GameObject> balls;
-		GameObject *whiteBall;
-
-		struct TouchInfo
-		{
-			bool isTouched { false };
-			glm::dvec2 posReleased {};
-			glm::dvec2 posTouched {};
-		} whiteBallTouchInfo;
+		// Constants
+		static constexpr double GameObjectScale = 3.0;
+		static constexpr double GameObjectInvMass = 1.0 / 50.0;
+		static constexpr double GameObjectTotalInvMass = GameObjectInvMass * 2;
+		static constexpr unsigned MaxGameObjects = 1'000u;
 		
-
-		struct PossibleCollission
+		struct GameObjectList
 		{
-			GameObject *a, *b;
-		};
+			double posX[MaxGameObjects];
+			double posY[MaxGameObjects];
+			double velX[MaxGameObjects];
+			double velY[MaxGameObjects];
+
+			// Get extreme functions
+			inline constexpr double getMinX(unsigned i)	{ return posX[i] - GameObjectScale; }
+			inline constexpr double getMaxX(unsigned i) { return posX[i] + GameObjectScale; }
+		}
+		gameObjects;
+		
+		// EXTREMES
+		static constexpr auto ExtremesSize = MaxGameObjects * 2u;
+		struct /*alignas(16)*/ Extreme 
+		{
+			double val;
+			unsigned index;
+			bool min;
+		} 
+		extremes[ExtremesSize];
+
+		// POSSIBLE COLLISIONS
+		struct PossibleCollission { unsigned a, b; };
+		std::vector<PossibleCollission> possibleCollisions[Utilities::Profiler::MaxNumThreads];
+		unsigned possibleCollisionsSize[Utilities::Profiler::MaxNumThreads];
 
 		struct ContactData
 		{
-			GameObject *a, *b;
-			glm::dvec2 point, normal;
+			unsigned a, b;
+			double normalX;
+			double normalY;
+			//GameObjectData pointX;
+			//GameObjectData pointY;
 			double penetatrion;
-			double totalInvMass;
-			// --
-			double restitution, friction;
+			// double totalInvMass; // GameObjectInvMass*2
+			//double restitution, friction;
 		};
+		std::vector<ContactData> contactDataList;
 
 		struct ContactGroup
 		{
-			std::vector<GameObject*> objects;
+			std::vector<unsigned> objectIndexes;
 			std::vector<ContactData> contacts;
 		};
+		std::vector<ContactGroup> contactGroups;
 	};
 
 	GameData* InitGamedata(const InputData & input)
@@ -76,33 +76,19 @@ namespace Game
 
 		GameData * gameData = new GameData;
 
-		gameData->balls.resize(16);
-		//for (auto & ball : gameData->balls)
-		int c = 1;
-		for (int i = 0; i <= 4; ++i)
+		const auto initX = int(- input.windowHalfSize.x + GameData::GameObjectScale);
+		const auto initY = int(- input.windowHalfSize.y + GameData::GameObjectScale);
+		const auto maxCols = (input.windowHalfSize.x * 2) / (GameData::GameObjectScale * 4);
+		const auto maxRows = (input.windowHalfSize.y * 2) / (GameData::GameObjectScale * 4);
+		for (auto i = 0u; i < GameData::MaxGameObjects; ++i)
 		{
-			for (int j = 0; j < i + 1; ++j)
-			{
-				gameData->balls[c].pos.x = -50 - i * int(input.windowHalfSize.x*0.12f);
-				gameData->balls[c].pos.y = 0 - i * int(input.windowHalfSize.y*0.1f) + j * int(input.windowHalfSize.y*0.2f);
-				c++;
-			}
+			//gameData->gameObjects.posX[i] = (i % int(maxCols)) * GameData::GameObjectScale * 4 - initX;
+			//gameData->gameObjects.posY[i] = int(i / (maxCols)) * GameData::GameObjectScale * 4 + initY;
+			gameData->gameObjects.posX[i] = rand() % int(input.windowHalfSize.x * 2 - GameData::GameObjectScale*2) + initX;
+			gameData->gameObjects.posY[i] = rand() % int(input.windowHalfSize.y * 2 - GameData::GameObjectScale*2) + initY;
+			gameData->gameObjects.velX[i] = (rand() % 200 + 50) * (1 - round(double(rand()) / RAND_MAX) * 2.0);
+			gameData->gameObjects.velY[i] = (rand() % 200 + 50) * (1 - round(double(rand()) / RAND_MAX) * 2.0);
 		}
-		gameData->whiteBall = &gameData->balls[0];
-		gameData->whiteBall->pos.x = input.windowHalfSize.x * 0.3f;
-		gameData->whiteBall->pos.y = 0;
-		
-		for (int i = static_cast<int>(Game::RenderData::TextureID::BALL_0);
-			 i < static_cast<int>(Game::RenderData::TextureID::MAX_BALLS);
-			 ++i)
-		{
-			//ball.vel = glm::dvec2{ rand() % 100 + 50, rand() % 100 + 50 } * (1 - round(double(rand()) / double(RAND_MAX)) * 2.0);
-			gameData->balls[i].scale = 30.0;
-			gameData->balls[i].invMass = 1 / 50.0;
-			gameData->balls[i].col.position = gameData->balls[i].pos;
-			gameData->balls[i].col.radius = gameData->balls[i].scale;
-		}
-
 		return gameData;
 	}
 
@@ -129,97 +115,219 @@ namespace Game
 		return ButtonState::NONE;
 	}
 
+	template<class T>
+	inline constexpr int sgn(T val)
+	{
+		return val < T(0) ? -1 : 1;
+	}
+
+	template<class T>
+	inline constexpr T dot(const T & xA, const T & yA, const T & xB, const T & yB)
+	{
+		return xA*xB + yA*yB;
+	}
+
+	template<class T>
+	inline constexpr T length(const T & x, const T & y)
+	{
+		static_assert(std::numeric_limits<T>::is_iec559, "'length' accepts only floating-point inputs");
+		return sqrt(dot(x, y, x, y));
+	}
+
+	template<class T>
+	inline constexpr T distance(const T & xA, const T & yA, const T & xB, const T & yB)
+	{
+		return length(xB - xA, yB - yA);
+	}
+
+	template<class T>
+	inline constexpr T normalizeX(const T & xA, const T & yA)
+	{
+		return xA / length(xA, yA);
+	}
+
+	template<class T>
+	inline constexpr T normalizeY(const T & xA, const T & yA)
+	{
+		return yA / length(xA, yA);
+	}
+
+	template <class T>
+	inline constexpr T normalize(const T & x)
+	{
+		static_assert(std::numeric_limits<T>::is_iec559, "'normalize' accepts only floating-point inputs");
+		return x < T(0) ? T(-1) : T(1);
+	}
+
+	inline void UpdateGameObjects(GameData::GameObjectList &gameObjects_, const InputData& inputData, const Utilities::TaskManager::JobContext &context)
+	{
+		auto job = Utilities::TaskManager::CreateLambdaBatchedJob(
+			[&gameObjects_, &inputData](int i, const Utilities::TaskManager::JobContext& context)
+			{
+			static constexpr double k0 = 0.99/*0.8*/, k1 = 0.1, k2 = 0.01;
+
+			auto &posX = gameObjects_.posX[i];
+			auto &posY = gameObjects_.posY[i];
+			auto &velX = gameObjects_.velX[i];
+			auto &velY = gameObjects_.velY[i];
+
+			// COMPUTE FRICTION
+			double frictionX = 0, frictionY = 0;
+			const double brakeValue{ pow(k0, inputData.dt) };
+			const double speed{ length(velX, velY) };
+			if (speed > 0)
+			{
+				const double fv{ k1 * speed + k2 * speed * speed };
+				frictionX -= fv * (velX / speed);
+				frictionY -= fv * (velY / speed);
+			}
+			const double accelerationX{ frictionX * GameData::GameObjectInvMass };
+			const double accelerationY{ frictionY * GameData::GameObjectInvMass };
+
+			// COMPUTE POSITION & VELOCITY
+			const auto kdt = (inputData.dt * inputData.dt) / 2.0;
+			const auto prevPosX = posX, prevPosY = posY;
+			posX += velX * inputData.dt + accelerationX * kdt;
+			posY += velY * inputData.dt + accelerationY * kdt;
+			velX = brakeValue * velX + accelerationX * inputData.dt;
+			velY = brakeValue * velY + accelerationY * inputData.dt;
+
+			if (length(velX, velY) < 1e-3) //1e-1
+				velX = velY = 0;
+
+			// CHECK & CORRECT MAP LIMITS
+			if (posX > inputData.windowHalfSize.x - GameData::GameObjectScale)
+				posX = inputData.windowHalfSize.x - GameData::GameObjectScale, velX = -velX;
+			else if (posX < -inputData.windowHalfSize.x + GameData::GameObjectScale)
+				posX = -inputData.windowHalfSize.x + GameData::GameObjectScale, velX = -velX;
+
+			if (posY > inputData.windowHalfSize.y - GameData::GameObjectScale)
+				posY = inputData.windowHalfSize.y - GameData::GameObjectScale, velY = -velY;
+			else if (posY < -inputData.windowHalfSize.y + GameData::GameObjectScale)
+				posY = -inputData.windowHalfSize.y + GameData::GameObjectScale, velY = -velY;
+			},
+			"Update Positions",
+			GameData::MaxGameObjects / (GameData::MaxGameObjects < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads),
+			GameData::MaxGameObjects);
+
+		context.DoAndWait(&job);
+	}
+
 	// Broad-Phase: "Sort & Sweep"
 	//   1 - Trobar els extrems de cada objecte respecte a un eix. (p.e. les la x min i max)
 	//   2 - Crear una llista ordenada amb cada extrem anotat ( o1min , o1max, o2min, o3min, o2max, o3max )
 	//   3 - Des de cada "min" anotar tots els "min" que es trobin abans de trobar el "max" corresponent a aquest objecte.
 	//        aquests son les possibles colisions.
-	std::vector<GameData::PossibleCollission> SortAndSweep(std::vector<GameData::GameObject> & gameObjects, const Utilities::TaskManager::JobContext &context)
+	void SortAndSweep(GameData & gameData, const Utilities::TaskManager::JobContext &context)
 	{
-		struct Extreme
-		{
-			GameData::GameObject * go;
-			double p;
-			bool min;
-		};
-
-	#ifndef PARALLEL
-		std::vector<Extreme> extremes;
-
-		for (GameData::GameObject & go : gameObjects)
-		{
-			extremes.push_back(Extreme { &go, dot(go.GetExtreme({ -1.0, 0.0 }), { 1.0, 0.0 }), true });
-			extremes.push_back(Extreme { &go, dot(go.GetExtreme({ +1.0, 0.0 }), { 1.0, 0.0 }), false });
-		}
-	#else
-		std::vector<Extreme> extremes;
-		extremes.resize(gameObjects.size() * 2);
-
-		auto jobA = Utilities::TaskManager::CreateLambdaJob(
-			[&gameObjects, &extremes](int i, const Utilities::TaskManager::JobContext& context)
+		auto jobA = Utilities::TaskManager::CreateLambdaBatchedJob(
+			[&gameData](unsigned i, const Utilities::TaskManager::JobContext& context)
 			{
-				auto &go = gameObjects[i];
-
-				extremes[i * 2 + 0] = Extreme{ &go, glm::dot(go.GetExtreme({ -1.0, 0.0 }),{ 1.0, 0.0 }), true };
-				extremes[i * 2 + 1] = Extreme{ &go, glm::dot(go.GetExtreme({ +1,0 }),{ 1, 0 }), false };
+				gameData.extremes[i * 2 + 0] = { gameData.gameObjects.getMinX(i), i, true };
+				gameData.extremes[i * 2 + 1] = { gameData.gameObjects.getMaxX(i), i, false };
 			},
 			"Sort & Sweep create list",
-			gameObjects.size());
+			GameData::MaxGameObjects / Utilities::Profiler::MaxNumThreads,
+			GameData::MaxGameObjects);
 		context.DoAndWait(&jobA);
-	#endif
 
-		std::sort(extremes.begin(), extremes.end(), [] (const Extreme & lhs, const Extreme & rhs)
-		{
-			return (lhs.p < rhs.p);
-		});
-
-	#ifndef PARALLEL
-		std::vector<GameData::PossibleCollission> result;
-
-		for (int i = 0; i < extremes.size(); ++i)
-		{
-			if (extremes[i].min)
+		/*auto jobSort = Utilities::TaskManager::CreateLambdaBatchedJob(
+			[&gameData](int i, const Utilities::TaskManager::JobContext& context)
 			{
-				for (int j = i + 1; extremes[i].go != extremes[j].go; ++j)
-				{
-					if (extremes[j].min)
-					{
-						result.push_back(GameData::PossibleCollission { extremes[i].go, extremes[j].go });
-					}
-				}
-			}
-		}
-	#else
-		std::vector<GameData::PossibleCollission> resultRaw[Utilities::Profiler::MaxNumThreads];
+				std::sort(gameData.extremes + GameData::ExtremesSize * ((context.threadIndex-1) / Utilities::Profiler::MaxNumThreads - 1),
+						  gameData.extremes + GameData::ExtremesSize * (context.threadIndex / Utilities::Profiler::MaxNumThreads - 1), 
+						  [](const GameData::Extreme & lhs, const GameData::Extreme & rhs) { return (lhs.val < rhs.val); });
+			},
+			"Sort",
+			GameData::ExtremesSize / (GameData::ExtremesSize < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads),
+			GameData::ExtremesSize
+		);
+		context.DoAndWait(&jobSort);*/
+		context.AddProfileMark(Utilities::Profiler::MarkerType::BEGIN_FUNCTION, nullptr, "Sort");
+		std::sort(gameData.extremes, gameData.extremes + GameData::ExtremesSize, 
+				  [](const GameData::Extreme & lhs, const GameData::Extreme & rhs) { return (lhs.val < rhs.val); });
+		context.AddProfileMark(Utilities::Profiler::MarkerType::BEGIN_FUNCTION, nullptr, "Sort");
 
-		auto jobB = Utilities::TaskManager::CreateLambdaJob(
-			[&extremes, &resultRaw](int i, const Utilities::TaskManager::JobContext& context)
+		
+		std::fill(gameData.possibleCollisionsSize, gameData.possibleCollisionsSize + Utilities::Profiler::MaxNumThreads, 0);
+
+		auto jobB = Utilities::TaskManager::CreateLambdaBatchedJob(
+			[&gameData](int i, const Utilities::TaskManager::JobContext& context)
 			{
-				if (extremes[i].min)
-				{
-					for (int j = i + 1; extremes[i].go != extremes[j].go; ++j)
-					{
-						if (extremes[j].min)
+				if (gameData.extremes[i].min)
+					for (int j = i + 1; j < GameData::ExtremesSize && gameData.extremes[i].index != gameData.extremes[j].index; ++j)
+						if (gameData.extremes[j].min)
 						{
-							//int index = count[context.threadIndex]++;
-							resultRaw[context.threadIndex].push_back({ extremes[i].go, extremes[j].go });
+							if (gameData.possibleCollisionsSize[context.threadIndex] < gameData.possibleCollisions[context.threadIndex].size())
+								gameData.possibleCollisions[context.threadIndex][gameData.possibleCollisionsSize[context.threadIndex]++] = { gameData.extremes[i].index, gameData.extremes[j].index };
+							else
+								gameData.possibleCollisions[context.threadIndex].push_back({ gameData.extremes[i].index, gameData.extremes[j].index });
 						}
-					}
-				}
 			},
 			"Sweep",
-			extremes.size()
+			GameData::ExtremesSize / (GameData::ExtremesSize < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads),
+			GameData::ExtremesSize
 		);
 		context.DoAndWait(&jobB);
 
-		std::vector<GameData::PossibleCollission> result;
-		for (auto &pc : resultRaw)
-			result.insert(result.end(), pc.begin(), pc.end());
-	#endif
-		return result;
+		//gameData.realPossibleCollisions.reserve(gameData.possibleCollisionsRealSize); //memmove
+
+		//context.AddProfileMark(Utilities::Profiler::MarkerType::BEGIN_FUNCTION, nullptr, "Real Possible Collisions");
+		//gameData.realPossibleCollisions.clear();
+		//for (auto i = 0u; i < Utilities::Profiler::MaxNumThreads; ++i) // TODO: optimize
+		//{
+		//	gameData.realPossibleCollisions.insert(gameData.realPossibleCollisions.end(), gameData.possibleCollisions[i].begin(), gameData.possibleCollisions[i].end());
+		//}
+		//context.AddProfileMark(Utilities::Profiler::MarkerType::END_FUNCTION, nullptr, "Real Possible Collisions");
 	}
 
-	std::vector<GameData::ContactGroup> GenerateContactGroups(std::vector<GameData::ContactData> contactData)
+	inline constexpr bool HasCollision(GameData::GameObjectList & gameObjects, unsigned indexA, unsigned indexB)
+	{
+		return distance(gameObjects.posX[indexA], gameObjects.posY[indexA], 
+						gameObjects.posX[indexB], gameObjects.posY[indexB]) < GameData::GameObjectScale + GameData::GameObjectScale;
+	}
+
+	inline constexpr GameData::ContactData GenerateContactData(GameData::GameObjectList & gameObjects, unsigned indexA, unsigned indexB)
+	{
+		const auto &posXA = gameObjects.posX[indexA];
+		const auto &posYA = gameObjects.posY[indexA];
+		const auto &posXB = gameObjects.posX[indexB];
+		const auto &posYB = gameObjects.posY[indexB];
+		const auto difX = posXB - posXA;
+		const auto difY = posYB - posYA;
+
+		//posXA + normal[0] * GameData::GameObjectScale, posXA + normal[1] * GameData::GameObjectScale, // point
+		return GameData::ContactData {
+			indexA, // a
+			indexB, // b
+			normalizeX(difX, difY), normalizeY(difX, difY), // normal
+			(GameData::GameObjectScale + GameData::GameObjectScale) - length(difX, difY), // penetration
+		};
+	}
+
+	inline void FineGrained(GameData &gameData, const Utilities::TaskManager::JobContext &context)
+	{
+		auto size = 0u;
+		for (auto &pcs : gameData.possibleCollisionsSize) size += pcs;
+		gameData.contactDataList.resize(size); // TODO: resize ?
+
+		auto jobB = Utilities::TaskManager::CreateLambdaBatchedJob(
+			[&gameData](int j, const Utilities::TaskManager::JobContext& context)
+		{
+			if (HasCollision(gameData.gameObjects, gameData.possibleCollisions[context.threadIndex][j].a, gameData.possibleCollisions[context.threadIndex][j].b))
+				gameData.contactDataList[contextA.threadIndex][j] = GenerateContactData(gameData.gameObjects,
+																						gameData.possibleCollisions[context.threadIndex][j].a,
+																						gameData.possibleCollisions[context.threadIndex][j].b);
+		},
+			"Generate Contact Data",
+			gameData.possibleCollisions[contextA.threadIndex].size() /
+			(gameData.possibleCollisions[contextA.threadIndex].size() < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads),
+			gameData.possibleCollisions[contextA.threadIndex].size());
+
+		contextA.DoAndWait(&jobB);
+	}
+
+	inline void GenerateContactGroups(GameData & gameData, const Utilities::TaskManager::JobContext &context)
 	{
 		// si ordenem podem "simplificar" la segona part.
 		// sense probar-ho no podem saber si és més optim o no.
@@ -240,365 +348,237 @@ namespace Game
 		//		return false;
 		//});
 
+		
+		std::unordered_map<unsigned, GameData::ContactGroup*> createdGroups[Utilities::Profiler::MaxNumThreads];
 
-		std::vector<GameData::ContactGroup> result;
-		std::unordered_map<GameData::GameObject*, GameData::ContactGroup*> createdGroups;
-
-		result.reserve(contactData.size());
-
-		for (int i = 0; i < contactData.size(); ++i)
+		auto jobA = Utilities::TaskManager::CreateLambdaBatchedJob(
+			[&gameData, &createdGroups](int k, const Utilities::TaskManager::JobContext& contextA)
 		{
-			auto it = createdGroups.find(contactData[i].a); // busquem si ja tenim alguna colisió amb l'objecte "a"
-			if (it == createdGroups.end())
+			gameData.contactGroups[contextA.threadIndex].reserve(gameData.contactDataList[contextA.threadIndex].size());
+
+			auto jobB = Utilities::TaskManager::CreateLambdaBatchedJob(
+				[&gameData, &createdGroups, &contextA](int i, const Utilities::TaskManager::JobContext& contextB)
 			{
-				it = createdGroups.find(contactData[i].b); // busquem si ja tenim alguna colisió amb l'objecte "b"
-
-				if (it == createdGroups.end())
+				auto it = createdGroups[contextA.threadIndex].find(gameData.contactDataList[contextA.threadIndex][i].a); // busquem si ja tenim alguna colisió amb l'objecte "a"
+				if (it == createdGroups[contextA.threadIndex].end())
 				{
-					GameData::ContactGroup group;
-					group.objects.push_back(contactData[i].a);
-					group.objects.push_back(contactData[i].b);
-					group.contacts.push_back(contactData[i]);
-
-					result.push_back(group); // creem la llista de colisions nova
-
-					createdGroups[contactData[i].a] = &result[result.size() - 1]; // guardem referència a aquesta llista
-					createdGroups[contactData[i].b] = &result[result.size() - 1]; // per cada objecte per trobarla
-				}
-				else
-				{
-					it->second->contacts.push_back(contactData[i]); // afegim la colisió a la llista
-					it->second->objects.push_back(contactData[i].a);
-					createdGroups[contactData[i].a] = it->second; // guardem referència de l'objecte que no hem trobat abans
-				}
-			}
-			else
-			{
-				GameData::ContactGroup *groupA = it->second;
-				groupA->contacts.push_back(contactData[i]);
-
-				auto itB = createdGroups.find(contactData[i].b);
-				if (itB == createdGroups.end())
-				{
-					groupA->objects.push_back(contactData[i].b);
-					createdGroups[contactData[i].b] = groupA;
-				}
-				else
-				{
-					GameData::ContactGroup *groupB = itB->second;
-
-					if (groupA != groupB)
+					it = createdGroups[contextA.threadIndex].find(gameData.contactDataList[contextA.threadIndex][i].b); // busquem si ja tenim alguna colisió amb l'objecte "b"
+					if (it == createdGroups[contextA.threadIndex].end())
 					{
-						// el objecte b ja és a un grup diferent, fem merge dels 2 grups.
+						gameData.contactGroups[contextA.threadIndex].push_back(GameData::ContactGroup{
+							{ gameData.contactDataList[contextA.threadIndex][i].a , gameData.contactDataList[contextA.threadIndex][i].b }, // game object indexes
+							{ gameData.contactDataList[contextA.threadIndex][i] } // ContactData
+						}); // creem la llista de colisions nova
 
-						// 1 - copiem tot el grup anterior
-						for (auto& contactData : groupB->contacts)
-						{
-							groupA->contacts.push_back(contactData);
-						}
-
-						// 2 - copiem els elements del segon grup i actualitzem el mapa
-						//     de grups
-						for (GameData::GameObject* go : groupB->objects)
-						{
-							if (go != contactData[i].a)
-								groupA->objects.push_back(go);
-							createdGroups[go] = groupA;
-						}
-
-						// 3 - marquem el grup com a buit
-						groupB->objects.clear();
-						groupB->contacts.clear();
+						createdGroups[contextA.threadIndex][gameData.contactDataList[contextA.threadIndex][i].a] = &gameData.contactGroups[contextA.threadIndex]
+							[gameData.contactGroups[contextA.threadIndex].size() - 1]; // guardem referència a aquesta llista
+						createdGroups[contextA.threadIndex][gameData.contactDataList[contextA.threadIndex][i].b] = &gameData.contactGroups[contextA.threadIndex]
+							[gameData.contactGroups[contextA.threadIndex].size() - 1]; // per cada objecte per trobarla
+					}
+					else
+					{
+						it->second->contacts.push_back(gameData.contactDataList[contextA.threadIndex][i]); // afegim la colisió a la llista
+						it->second->objectIndexes.push_back(gameData.contactDataList[contextA.threadIndex][i].a);
+						createdGroups[contextA.threadIndex][gameData.contactDataList[contextA.threadIndex][i].a] = it->second; // guardem referència de l'objecte que no hem trobat abans
 					}
 				}
-			}
-		}
+				else
+				{
+					GameData::ContactGroup *groupA = it->second;
+					groupA->contacts.push_back(gameData.contactDataList[contextA.threadIndex][i]);
 
-		return result;
+					auto itB = createdGroups[contextA.threadIndex].find(gameData.contactDataList[contextA.threadIndex][i].b);
+					if (itB == createdGroups[contextA.threadIndex].end())
+					{
+						groupA->objectIndexes.push_back(gameData.contactDataList[contextA.threadIndex][i].b);
+						createdGroups[contextA.threadIndex][gameData.contactDataList[contextA.threadIndex][i].b] = groupA;
+					}
+					else
+					{
+						GameData::ContactGroup *groupB = itB->second;
+
+						if (groupA != groupB)
+						{
+							// el objecte b ja és a un grup diferent, fem merge dels 2 grups.
+
+							// 1 - copiem tot el grup anterior
+							for (auto& contact : groupB->contacts)
+							{
+								groupA->contacts.push_back(contact);
+							}
+
+							// 2 - copiem els elements del segon grup i actualitzem el mapa
+							//     de grups
+							for (auto &index : groupB->objectIndexes)
+							{
+								if (index != gameData.contactDataList[contextA.threadIndex][i].a)
+									groupA->objectIndexes.push_back(index);
+								createdGroups[contextA.threadIndex][index] = groupA;
+							}
+
+							// 3 - marquem el grup com a buit
+							groupB->objectIndexes.clear();
+							groupB->contacts.clear();
+						}
+					}
+				}
+			},
+			"Generate Contact Groups",
+			Utilities::Profiler::MaxNumThreads,
+			Utilities::Profiler::MaxNumThreads);
+
+			contextA.DoAndWait(&jobB);
+		},
+		"Generate Contact Groups List",
+		Utilities::Profiler::MaxNumThreads,
+		Utilities::Profiler::MaxNumThreads);
+		context.DoAndWait(&jobA);
 	}
 
-	inline void SolveVelocity(GameData::ContactData * contactData)
+	inline constexpr void SolveVelocity(GameData::GameObjectList & gameObjects, GameData::ContactData & contactData)
 	{
-		double approachVel = glm::dot(contactData->a->vel - contactData->b->vel, glm::normalize(contactData->a->pos - contactData->b->pos));
-		auto separationVel = -approachVel;
+		const auto &posXA = gameObjects.posX[contactData.a];
+		const auto &posYA = gameObjects.posY[contactData.a];
+		auto &velXA = gameObjects.velX[contactData.a];
+		auto &velYA = gameObjects.velY[contactData.a];
+		const auto &posXB = gameObjects.posX[contactData.b];
+		const auto &posYB = gameObjects.posY[contactData.b];
+		auto &velXB = gameObjects.velX[contactData.b];
+		auto &velYB = gameObjects.velY[contactData.b];
+
+		//double approachVel = glm::dot(contactData->a - contactData->b->vel, glm::normalize(contactData->a->pos - contactData->b->pos));
+		const auto difVelX = velXA - velXB;
+		const auto difVelY = velYA - velYB;
+		const double separationVel{ dot(difVelX, difVelY, contactData.normalX, contactData.normalY) };
 		
 		if (separationVel > 0.0)
 		{
-			static const auto k = 0.5; // 0 - 1
-
-			auto newSeparationVel = -k * separationVel;
-			auto deltaVel = newSeparationVel - separationVel;
-			auto impulse = deltaVel / contactData->totalInvMass;
-			auto impulsePerIMass = contactData->normal * impulse;
-			contactData->a->vel -= impulsePerIMass * contactData->a->invMass;
-			contactData->b->vel += impulsePerIMass * contactData->b->invMass;
+			constexpr auto k = 0.7; // 0 - 1 restitution
+			const auto impulse{ (-k * separationVel - separationVel) / GameData::GameObjectTotalInvMass };
+			const double impulsePerIMass[] {
+				contactData.normalX * impulse,
+				contactData.normalY * impulse
+			};
+			velXA += impulsePerIMass[0] * GameData::GameObjectInvMass;
+			velYA += impulsePerIMass[1] * GameData::GameObjectInvMass;
+			velXB -= impulsePerIMass[0] * GameData::GameObjectInvMass;
+			velYB -= impulsePerIMass[1] * GameData::GameObjectInvMass;
 		}
 	}
 
-	inline void SolvePenetration(GameData::ContactData * contactData)
+	inline constexpr void SolvePenetration(GameData::GameObjectList & gameObjects, GameData::ContactData & contactData)
 	{
-		if (contactData->penetatrion > 0.0)
+		if (contactData.penetatrion > 0.0)
 		{
-			auto movePerIMass = contactData->normal * (glm::normalize(contactData->penetatrion) / contactData->totalInvMass);
-			contactData->a->pos += movePerIMass * contactData->a->invMass;
-			contactData->b->pos -= movePerIMass * contactData->b->invMass;
+			const double movePerIMass[]{
+				contactData.normalX * (contactData.penetatrion / GameData::GameObjectTotalInvMass),
+				contactData.normalY * (contactData.penetatrion / GameData::GameObjectTotalInvMass)
+			};
+			gameObjects.posX[contactData.a] -= movePerIMass[0] * GameData::GameObjectInvMass;
+			gameObjects.posY[contactData.a] -= movePerIMass[1] * GameData::GameObjectInvMass;
+			gameObjects.posX[contactData.b] += movePerIMass[0] * GameData::GameObjectInvMass;
+			gameObjects.posY[contactData.b] += movePerIMass[1] * GameData::GameObjectInvMass;
 		}
 	}
 
-	inline bool HasCollision(const GameData::GameObject * c1, const GameData::GameObject * c2)
+	void SolveCollisionGroups(GameData & gameData, const Utilities::TaskManager::JobContext &context)
 	{
-		if (c1->pos == c2->pos && c1->vel == c2->vel)
-			return false;
-
-		auto dist = sqrt((c1->col.position.x - c2->col.position.x) * (c1->col.position.x - c2->col.position.x)
-						 + (c1->col.position.y - c2->col.position.y) * (c1->col.position.y - c2->col.position.y));
-
-		return (dist < c1->col.radius + c2->col.radius);
-	}
-
-	inline GameData::ContactData GenerateContactData(GameData::GameObject * c1, GameData::GameObject * c2)
-	{
-		GameData::ContactData contact;
-		contact.a = c1;
-		contact.b = c2;
-		contact.normal = glm::normalize(c1->col.position - c2->col.position);
-		contact.point = c1->pos + contact.normal * c1->col.radius;
-		contact.penetatrion = (c1->col.radius + c2->col.radius) - 
-			glm::distance(c1->col.position, c2->pos + contact.normal*c2->col.radius) - 
-			glm::distance(c2->col.position, c1->pos - contact.normal*c1->col.radius);
-		contact.totalInvMass = c1->invMass + c2->invMass;
-		return contact;
-	}
-
-	inline std::vector<GameData::ContactData> FineGrained(const std::vector<GameData::PossibleCollission> & possibleCollisions)
-	{
-		std::vector<GameData::ContactData> contactData;
-		for (auto& pc : possibleCollisions)
+		for (auto &cgs : gameData.contactGroups)
 		{
-			if (HasCollision(pc.a, pc.b))
-				contactData.push_back(GenerateContactData(pc.a, pc.b));
-		}
-		return contactData;
-	}
-
-	void SolveCollissionGroup(const GameData::ContactGroup& contactGroup)
-	{
-		std::vector<GameData::ContactData> contacts = contactGroup.contacts;
-		int iterations = 0;
-		while (contacts.size() > 0 && iterations < contactGroup.contacts.size() * 3)
-		{
-			// busquem la penetració més gran
-			GameData::ContactData* contactData = nullptr;
-			for (GameData::ContactData& candidate : contacts)
+			if (!cgs.empty())
 			{
-				if (contactData == nullptr || contactData->penetatrion < candidate.penetatrion)
-					contactData = &candidate;
-			}
-
-			if (contactData->penetatrion < 1e-5)
-				break;
-			
-			SolveVelocity(contactData);
-			SolvePenetration(contactData);
-
-		#if 0
-			std::vector<PossibleCollission> possibleCollissions;
-			for (ContactData& cd : contactGroup.contacts)
-			{
-				possibleCollissions.push_back({ cd.a, cd.b });
-			}
-
-			contacts = FindCollissions(possibleCollissions);
-		#elif 0
-			contacts = FindCollissions(contactGroup.contacts);
-		#else
-			// tornem a generar contactes per al grup
-			contacts.clear();
-			for (int i = 0; i < contactGroup.objects.size(); ++i)
-			{
-				for (int j = i + 1; j < contactGroup.objects.size(); ++j)
+				auto jobB = Utilities::TaskManager::CreateLambdaBatchedJob(
+					[&gameData, &cgs](int i, const Utilities::TaskManager::JobContext& context)
 				{
-					if (HasCollision(contactGroup.objects[i], contactGroup.objects[j]))
+					std::vector<GameData::ContactData> contacts{ gameData.contactGroups[context.threadIndex][i].contacts };
+					int iterations = 0;
+					while (contacts.size() > 0 && iterations < gameData.contactGroups[context.threadIndex][i].contacts.size() * 3)
 					{
-						GameData::ContactData cd = GenerateContactData(contactGroup.objects[i], contactGroup.objects[j]);
-						contacts.push_back(cd);
+						// busquem la penetració més gran
+						int MaxPenetrationIndex = 0;
+						for (int j = 0; j < contacts.size(); j++)
+							if (contacts[j].penetatrion >= contacts[MaxPenetrationIndex].penetatrion)
+								MaxPenetrationIndex = j;
+
+						if (contacts[MaxPenetrationIndex].penetatrion < 1e-5)
+							break;
+
+						SolveVelocity(gameData.gameObjects, contacts[MaxPenetrationIndex]);
+						SolvePenetration(gameData.gameObjects, contacts[MaxPenetrationIndex]);
+
+						#if 0
+						std::vector<PossibleCollission> possibleCollissions;
+						for (ContactData& cd : contactGroup.contacts)
+						{
+							possibleCollissions.push_back({ cd.a, cd.b });
+						}
+						contacts = FindCollissions(possibleCollissions);
+						#elif 0
+						contacts = FindCollissions(contactGroup.contacts);
+						#else
+						// tornem a generar contactes per al grup
+						contacts.clear();
+						for (int j = 0; j < gameData.contactGroups[context.threadIndex][i].objectIndexes.size(); ++j)
+						{
+							for (int k = j + 1; k < gameData.contactGroups[context.threadIndex][i].objectIndexes.size(); ++k)
+							{
+								if (HasCollision(gameData.gameObjects, gameData.contactGroups[context.threadIndex][i].objectIndexes[j], gameData.contactGroups[context.threadIndex][i].objectIndexes[k]))
+								{
+									contacts.push_back(GenerateContactData(gameData.gameObjects, gameData.contactGroups[context.threadIndex][i].objectIndexes[k], gameData.contactGroups[contextA.threadIndex][i].objectIndexes[j]));
+								}
+							}
+						}
+						#endif
+						++iterations;
 					}
-				}
+				},
+					"Group Solver",
+					gameData.contactGroups[contextA.threadIndex].size()
+					/ (gameData.contactGroups[contextA.threadIndex].size() < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads),
+					gameData.contactGroups[contextA.threadIndex].size());
+				contextA.DoAndWait(&jobB);
 			}
-		#endif
-			++iterations;
 		}
-	}
-
-	inline void UpdateBall(GameData::GameObject &ball_, const InputData& inputData)
-	{
-		const double k0 = 0.8, k1 = 0.1, k2 = 0.01;
-
-		glm::dvec2 f = {};
-
-		double brakeValue = pow(k0, inputData.dt);
-
-		double speed = glm::length(ball_.vel);
-		if (speed > 0)
-		{
-			double fv = k1 * speed + k2 * speed * speed;
-			glm::dvec2 friction = -fv * glm::normalize(ball_.vel);
-			f += friction;
-		}
-
-		glm::dvec2 a = f * ball_.invMass;
-
-		ball_.pos += ball_.vel * inputData.dt + f * (0.5 * inputData.dt * inputData.dt);
-		ball_.vel = brakeValue * ball_.vel + a * inputData.dt;
-		ball_.col.position = ball_.pos;
-
-		if (glm::length(ball_.vel) < 1e-3)
-			ball_.vel = { 0,0 };
-
-		if (ball_.pos.x + ball_.scale > inputData.windowHalfSize.x)
-			ball_.pos.x = inputData.windowHalfSize.x - ball_.scale,
-			ball_.vel.x = -ball_.vel.x;
-		if (ball_.pos.x - ball_.scale < -inputData.windowHalfSize.x)
-			ball_.pos.x = -inputData.windowHalfSize.x + ball_.scale,
-			ball_.vel.x = -ball_.vel.x;
-		if (ball_.pos.y + ball_.scale > inputData.windowHalfSize.y)
-			ball_.pos.y = inputData.windowHalfSize.y - ball_.scale,
-			ball_.vel.y = -ball_.vel.y;
-		if (ball_.pos.y - ball_.scale < -inputData.windowHalfSize.y)
-			ball_.pos.y = -inputData.windowHalfSize.y + ball_.scale,
-			ball_.vel.y = -ball_.vel.y;
 	}
 
 	RenderData Update(GameData & gameData, const InputData& inputData, const Utilities::TaskManager::JobContext &context)
 	{
-		// PROCESS INPUT
-		if (inputData.mouseButtonL == InputData::ButtonState::DOWN || inputData.mouseButtonL == InputData::ButtonState::HOLD)
-		{
-			auto realMouseX = inputData.mousePosition.x - inputData.windowHalfSize.x;
-			auto realMouseY = inputData.windowHalfSize.y - inputData.mousePosition.y;
-
-			if (gameData.whiteBall->pos.x - gameData.whiteBall->scale < double(realMouseX) &&
-				gameData.whiteBall->pos.x + gameData.whiteBall->scale > double(realMouseX) &&
-				gameData.whiteBall->pos.y - gameData.whiteBall->scale < double(realMouseY) &&
-				gameData.whiteBall->pos.y + gameData.whiteBall->scale > double(realMouseY))
-			{
-				/*char buffer[512];
-				sprintf_s(buffer, "x: %f, y: %d\nx: %f, y : %d\n\n", gameData.whiteBall->pos.x, realMouseX, gameData.whiteBall->pos.y, realMouseY);
-				OutputDebugStringA(buffer);*/
-				//gameData.whiteBall->vel = {};
-				gameData.whiteBallTouchInfo.isTouched = true;
-				gameData.whiteBallTouchInfo.posTouched = gameData.whiteBall->pos;
-			}
-		}
-		if (gameData.whiteBallTouchInfo.isTouched)
-		{
-			auto realMouseX = inputData.mousePosition.x - inputData.windowHalfSize.x;
-			auto realMouseY = inputData.windowHalfSize.y - inputData.mousePosition.y;
-
-			gameData.whiteBallTouchInfo.posReleased = { realMouseX, realMouseY };
-			gameData.whiteBallTouchInfo.posTouched = gameData.whiteBall->pos;
-			
-			if (inputData.mouseButtonL == InputData::ButtonState::UP)
-			{
-				gameData.whiteBall->vel = -(gameData.whiteBallTouchInfo.posReleased - gameData.whiteBallTouchInfo.posTouched) * 5.0;
-				gameData.whiteBallTouchInfo.isTouched = false;
-			}
-		}
-
 		// UPDATE PHYSICS
 		{
-			auto guard = Utilities::Profiler::instance().CreateProfileMarkGuard("Update Physics");
+			auto guard = context.CreateProfileMarkGuard("Update Physics");
 
 			// 1 - Update posicions / velocitats
-			{
-			#ifndef PARALLEL
-				for (auto& ball : gameData.balls)
-					UpdateBall(ball, inputData);
-			#else
-				auto job = Utilities::TaskManager::CreateLambdaJob(
-					[&gameData, &inputData](int i, const Utilities::TaskManager::JobContext& context)
-					{
-						UpdateBall(gameData.balls[i], inputData);
-					},
-					"update positions job",
-					gameData.balls.size());
-				context.DoAndWait(&job);
-			#endif
-			}
+			UpdateGameObjects(gameData.gameObjects, inputData, context);
 
 			// 2 - Generació de colisions
 
 			//   2.1 - Broad-Phase: "Sort & Sweep"
-			Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::BEGIN_FUNCTION, nullptr, "Sort & Sweep");
-			auto possibleCollisions = SortAndSweep(gameData.balls, context);
-			Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::END_FUNCTION, nullptr, "Sort & Sweep");
+			SortAndSweep(gameData, context);
 
 			//   2.2 - Fine-Grained
-			Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::BEGIN_FUNCTION, nullptr, "Fine-Grained");
-			auto contacts = FineGrained(possibleCollisions);
-			Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::END_FUNCTION, nullptr, "Fine-Grained");
+			FineGrained(gameData, context);
 
 			//   2.3 - Sort / Generació de grups de col·lisions
-			Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::BEGIN_FUNCTION, nullptr, "Generate Contact Groups");
-			auto contactGroups = GenerateContactGroups(contacts);
-			Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::END_FUNCTION, nullptr, "Generate Contact Groups");
+			GenerateContactGroups(gameData, context);
 
 			// 3 - Resolució de colisions
-			Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::BEGIN_FUNCTION, nullptr, "Solve Collission Group");
-			{
-			#ifndef PARALLEL
-				for (auto & group : contactGroups)
-					SolveCollissionGroup(group);
-			#else
-				auto job = Utilities::TaskManager::CreateLambdaJob(
-					[&contactGroups](int i, const Utilities::TaskManager::JobContext& context)
-				{
-					SolveCollissionGroup(contactGroups[i]);
-				},
-					"group solver",
-					contactGroups.size() // nº de vegades que es farà la tasca.
-					);
-				context.DoAndWait(&job);
-			#endif
-				Utilities::Profiler::instance().AddProfileMark(Utilities::Profiler::MarkerType::END_FUNCTION, nullptr, "Solve Collission Group");
-			}
+			SolveCollisionGroups(gameData, context);
 		}
 
 		// RENDER BALLS
 		RenderData renderData {};
-		//for (const auto& ball : gameData.balls)
-		for (int i = static_cast<int>(Game::RenderData::TextureID::BALL_0);
-			 i < static_cast<int>(Game::RenderData::TextureID::MAX_BALLS);
-			 ++i)
-		{
-			RenderData::Sprite sprite {};
-			sprite.position = gameData.balls[i].pos;
-			//sprite.rotation = atan2f (gameData.balls[i].vel.y, gameData.balls[i].vel.x);
-			sprite.size = { gameData.balls[i].scale, gameData.balls[i].scale };
-			sprite.color = { 1.f, 1.f, 1.f };
-			sprite.texture = static_cast<RenderData::TextureID>(i);
-
-			renderData.sprites.push_back(sprite);
-		}
-
-		// RENDER DEBUG LINE SHOT
-		if (gameData.whiteBallTouchInfo.isTouched)
-		{
-			RenderData::Sprite sprite {};
-			auto dir = glm::normalize(gameData.whiteBallTouchInfo.posReleased - gameData.whiteBallTouchInfo.posTouched);
-			auto dist = glm::distance(gameData.whiteBallTouchInfo.posReleased, gameData.whiteBallTouchInfo.posTouched);
-			sprite.position = gameData.whiteBall->pos - dir * dist;
-			sprite.rotation = float(atan2(dir.y, dir.x));
-			//sprite.rotation = glm::radians(sin(gameData.whiteBallTouchInfo.posReleased.x) + cos(gameData.whiteBallTouchInfo.posReleased.y));
-			sprite.size = { dist, 3 };
-			/*char buffer[512];
-			sprintf_s(buffer, "x: %f\n", glm::distance(gameData.whiteBallTouchInfo.posReleased, gameData.whiteBallTouchInfo.posTouched));
-			OutputDebugStringA(buffer);*/
-			sprite.color = { 1.f, 0.f, 0.f };
-			sprite.texture = RenderData::TextureID::PIXEL;
-
-			renderData.sprites.push_back(sprite);
-		}
+		renderData.sprites.resize(GameData::MaxGameObjects);
+		auto job = Utilities::TaskManager::CreateLambdaBatchedJob(
+			[&renderData, &gameData](int i, const Utilities::TaskManager::JobContext& context)
+			{
+				renderData.sprites[i].position = { gameData.gameObjects.posX[i], gameData.gameObjects.posY[i] };
+				renderData.sprites[i].size = { GameData::GameObjectScale, GameData::GameObjectScale };
+				renderData.sprites[i].color = { 1.f, 1.f, 1.f };
+			},
+			"Fill Render Data",
+			GameData::MaxGameObjects / (GameData::MaxGameObjects < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads),
+			GameData::MaxGameObjects);
+		context.DoAndWait(&job);
 
 		return renderData;
 	}

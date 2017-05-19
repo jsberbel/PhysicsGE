@@ -14,6 +14,7 @@
 #include "ThreadsafeStructures.hh"
 #include "Profiler.hh"
 #include <cassert>
+#include "Allocators.hpp"
 
 namespace Utilities
 {
@@ -28,12 +29,13 @@ namespace Utilities
 		class JobScheduler;
 		struct JobContext;
 
-
 		// aquesta estructura ens permetrà fàcil accés a estructures pseudo-globals per
 		// interactuar amb el sistema de tasques.
 		struct JobContext
 		{
 			JobScheduler *scheduler;
+			Profiler *profiler;
+			DefaultAllocator* allocator;
 			// dades locals a la nostra tasca. Serviràn al JobScheduler per a tractar correctament la tasca.
 			int threadIndex;
 			int fiberIndex;
@@ -44,10 +46,15 @@ namespace Utilities
 
 			void PrintDebug(const char*) const; // implementar en un fitxer platform-dependant.
 
-												// wrapper al profiler per a indicar correctament el thread actual.
+			// wrapper al profiler per a indicar correctament el thread actual.
 			Profiler::MarkGuard CreateProfileMarkGuard(const char* functionName, int systemID = -1) const
 			{
-				return PROFILER.CreateProfileMarkGuard(functionName, threadIndex, systemID);
+				return profiler->CreateProfileMarkGuard(functionName, threadIndex, systemID);
+			}
+
+			inline void AddProfileMark(Profiler::MarkerType reason, const void* identifier = nullptr, const char* functionName = nullptr, int threadId = 0, int systemID = -1) const
+			{
+				return profiler->AddProfileMark(reason, identifier, functionName, threadIndex, systemID);
 			}
 		};
 
@@ -106,7 +113,7 @@ namespace Utilities
 			{}
 
 			// funció que inicialitza totes les dades dels Fibers
-			void Init(int _numThreads/*, DefaultAllocator* allocator*/)
+			void Init(int _numThreads, Profiler *profiler, DefaultAllocator* allocator)
 			{
 				numThreads = _numThreads;
 				// creem els Fibers que farem servir per a les tasques.
@@ -127,8 +134,8 @@ namespace Utilities
 				{
 					// dades comunes per al funcionament de la tasca
 					fiberContexts[i].scheduler = this;
-					//fiberContexts[i].profiler = profiler;
-					//fiberContexts[i].allocator = allocator;
+					fiberContexts[i].profiler = profiler;
+					fiberContexts[i].allocator = allocator;
 					fiberContexts[i].threadIndex = -1;
 					fiberContexts[i].fiberIndex = i;
 					// dades per al scheduler
@@ -199,7 +206,7 @@ namespace Utilities
 			}
 
 			// fil principal del scheduler. Això caldrà que es cridi des de cada thread.
-			void RunScheduler(int idx);
+			void RunScheduler(int idx, Profiler &profiler);
 
 			// indica als threads que es tanquin.
 			void FinishTasks() { runTasks.store(false); }

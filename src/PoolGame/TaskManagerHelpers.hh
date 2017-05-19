@@ -71,7 +71,7 @@ namespace Utilities
 
 			}
 
-			void DoTask(int taskIndex, const JobContext& context) override
+			constexpr void DoTask(int taskIndex, const JobContext& context) override
 			{
 				int max = totalTasks < (taskIndex + 1) * batchSize ? totalTasks : (taskIndex + 1) * batchSize;
 				for (int i = taskIndex * batchSize; i < max; ++i)

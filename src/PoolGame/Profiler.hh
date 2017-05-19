@@ -2,8 +2,6 @@
 
 #include <chrono>
 
-#define PROFILER Utilities::Profiler::instance()
-
 namespace Utilities
 {
 	class Profiler
@@ -18,8 +16,6 @@ namespace Utilities
 			BEGIN_IDLE, END_IDLE,
 			BEGIN_FUNCTION, END_FUNCTION,
 		};
-
-		static Profiler& instance();
 
 		// Cridar aquesta funció cada cop que volguem registrar una marca al profiler.
 		// emparellar cada BEGIN_* amb un END_* i cada PAUSE_* amb un RESUME_*. Els BEGIN_FUNCTION/END_FUNCTION han d'anar aniuats i dins de begin/end
@@ -57,7 +53,7 @@ namespace Utilities
 		};
 
 		static constexpr int ProfilerMarkerBufferSize = 16 * 1024;
-		static constexpr int MaxNumThreads = 2;
+		static constexpr int MaxNumThreads = 8; // 16
 
 	private:
 
@@ -79,6 +75,6 @@ namespace Utilities
 		int profilerNextWriteIndex[MaxNumThreads] = {}; // TODO do this atomic?
 		int profilerNextReadIndex[MaxNumThreads] = {};
 		bool recordNewFrame = true;
-		float millisecondLength = 400.0f;
+		float millisecondLength = 130.0f;
 	};
 }
