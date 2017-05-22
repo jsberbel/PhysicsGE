@@ -10,8 +10,8 @@ global_var HGLRC   s_OpenGLRenderingContext		 { nullptr };
 global_var HDC	   s_WindowHandleToDeviceContext { nullptr };
 
 global_var bool	   s_windowActive				 { true };
-global_var GLsizei s_screenWidth				 { 900 }; // 1920
-global_var GLsizei s_screenHeight				 { 600 }; // 1080
+global_var GLsizei s_screenWidth				 { 1920 }; // 900
+global_var GLsizei s_screenHeight				 { 1080 }; // 600
 global_var GLsizei s_windowResized				 { false };
 
 #define GET_X_LPARAM(lp) ((int)(short)LOWORD(lp))

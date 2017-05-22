@@ -53,7 +53,7 @@ namespace Utilities
 		};
 
 		static constexpr int ProfilerMarkerBufferSize = 16 * 1024;
-		static constexpr int MaxNumThreads = 8; // 16
+		static constexpr int MaxNumThreads = 8; // 8
 
 	private:
 
