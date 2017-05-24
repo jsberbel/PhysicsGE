@@ -176,6 +176,7 @@
     <ClInclude Include="TaskManager.inl.hh" />
     <ClInclude Include="TaskManagerHelpers.hh" />
     <ClInclude Include="ThreadsafeStructures.hh" />
+    <ClInclude Include="Utils.inl.hh" />
     <ClInclude Include="Win32_Main.hh" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

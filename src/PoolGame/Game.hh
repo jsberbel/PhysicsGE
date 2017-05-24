@@ -33,7 +33,7 @@ namespace Game
 
 		ButtonState mouseButtonL;
 		ButtonState mouseButtonR;
-		//bool mouseWheelZooming;
+		bool isZooming;
 		float mouseWheelZoom;
 
 		internal_fn ButtonState ProcessKey(const bool &prevKey, const bool &nowKey);

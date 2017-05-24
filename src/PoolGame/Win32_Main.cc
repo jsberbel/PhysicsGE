@@ -653,11 +653,20 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 	// INIT TIME
 	QueryPerformanceCounter(&l_LastFrameTime);
 
+	struct Camera
+	{
+		glm::ivec2 pos{ 0, 0 };
+		float zoom{ 1.f };
+		bool needsUpdate = false;
+	} camera;
+	
+
 	bool quit{ false };
 	do {
 		// PROCESS MESSAGES
 		{
 			MSG msg{};
+			inputData.mouseWheelZoom = false;
 
 			while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
 			{
@@ -678,6 +687,17 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 					buttonsNowKey[msg.wParam & 255] = false;
 					fHandled = true;
 				}
+				if (msg.message == WM_MOUSEWHEEL)
+				{
+					inputData.isZooming = true;
+					inputData.mouseWheelZoom = GET_Y_LPARAM(msg.wParam);
+					/*char buffer[50];
+					sprintf_s(buffer, "z: %f\n", inputData.mouseWheelZoom);
+					OutputDebugStringA(buffer);*/
+					constexpr auto maxZoom = 0.f;
+					camera.zoom = camera.zoom >= maxZoom ? camera.zoom - inputData.mouseWheelZoom*0.0005f : maxZoom;
+					camera.needsUpdate = true;
+				}
 
 				HandleMouse(msg, inputData);
 
@@ -691,7 +711,6 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 			if (s_windowResized)
 			{
 				inputData.windowHalfSize = { s_screenWidth / 2, s_screenHeight / 2 };
-				// create a orthogonal projection matrix
 				projection = glm::ortho(-static_cast<float>(inputData.windowHalfSize.x), // left
 					static_cast<float>(inputData.windowHalfSize.x), // right
 					-static_cast<float>(inputData.windowHalfSize.y), // bot
@@ -699,6 +718,40 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 					-5.0f, 5.0f); // near // far
 				io.DisplaySize = ImVec2((float)s_screenWidth, (float)s_screenHeight);
 				s_windowResized = false;
+			}
+
+			// MOVE CAMERA
+			constexpr auto speed = 500.f;
+			if (buttonsNowKey[0x41]) // A
+			{
+				camera.pos.x -= speed*inputData.dt;
+				camera.needsUpdate = true;
+				
+			}
+			if (buttonsNowKey[0x44]) // D
+			{
+				camera.pos.x += speed*inputData.dt;
+				camera.needsUpdate = true;
+			}
+			if (buttonsNowKey[0x53]) // S
+			{
+				camera.pos.y -= speed*inputData.dt;
+				camera.needsUpdate = true;
+			}
+			if (buttonsNowKey[0x57]) // W
+			{
+				camera.pos.y += speed*inputData.dt;
+				camera.needsUpdate = true;
+			}
+
+			if (camera.needsUpdate)
+			{
+				projection = glm::ortho(-static_cast<float>((-camera.pos.x + inputData.windowHalfSize.x) * camera.zoom), // left
+										static_cast<float>((camera.pos.x + inputData.windowHalfSize.x) * camera.zoom), // right
+										-static_cast<float>((-camera.pos.y + inputData.windowHalfSize.y) * camera.zoom), // bot
+										static_cast<float>((camera.pos.y + inputData.windowHalfSize.y) * camera.zoom), // top
+										-5.0f, 5.0f); // near // far
+				camera.needsUpdate = false;
 			}
 		}
 
@@ -727,7 +780,7 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 
 		auto updateJob = Utilities::TaskManager::CreateLambdaJob([&](int, const Utilities::TaskManager::JobContext &context)
 		{
-			for (int i = 0; i < numFramesElapsed; ++i)
+			for (int i = 0; i < 1; ++i)
 			{
 				inputData.dt = static_cast<double>(l_TicksPerFrame) / static_cast<double>(l_PerfCountFrequency);
 				
@@ -784,6 +837,35 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 		glActiveTexture(GL_TEXTURE0 + 0);
 
 		// RENDER SPRITES
+		//auto drawJob = Utilities::TaskManager::CreateLambdaBatchedJob(
+		//	[&renderer, &renderData, &projection](int i, const Utilities::TaskManager::JobContext& context)
+		//{
+		//	glBindTexture(GL_TEXTURE_2D, renderer.textures[static_cast<int>(renderData.sprites[i].texture)]); // get the right texture
+
+		//																									  // create the model matrix, with a scale and a translation.
+		//	glm::mat4 model{
+		//		glm::scale(
+		//			glm::rotate(
+		//			glm::translate(glm::mat4(), glm::vec3(renderData.sprites[i].position, 0.f)),
+		//			renderData.sprites[i].rotation, glm::vec3(0.f, 0.f, 1.f)),
+		//			glm::vec3(renderData.sprites[i].size, 1.f))
+		//	};
+
+		//	// the transform is the addition of the model transformation and the projection
+		//	Win32::InstanceData instanceData{ projection.load() * model , glm::vec4(renderData.sprites[i].color, 1) };
+
+		//	glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[0]);
+		//	glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Win32::InstanceData), static_cast<GLvoid*>(&instanceData));
+
+		//	glBindBufferBase(GL_UNIFORM_BUFFER, 0, renderer.uniforms[0]);
+
+		//	glBindVertexArray(renderer.vaos[0].vao);
+		//	glDrawElements(GL_TRIANGLES, renderer.vaos[0].numIndices, GL_UNSIGNED_SHORT, nullptr);
+		//},
+		//	"Penetration Search",
+		//	renderData.sprites.size() / (renderData.sprites.size() < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads),
+		//	renderData.sprites.size());
+		//Win32::s_JobScheduler.DoAndWait(&drawJob, &mainThreadContext);
 		for (auto & sprite : renderData.sprites)
 		{
 			glBindTexture(GL_TEXTURE_2D, renderer.textures[static_cast<int>(sprite.texture)]); // get the right texture

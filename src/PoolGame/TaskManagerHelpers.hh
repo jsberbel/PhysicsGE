@@ -79,6 +79,32 @@ namespace Utilities
 			}
 		};
 
+		//template<typename Lambda>
+		//class LambdaConditionBatchedJob : public Job
+		//{
+		//	Lambda lambda;
+		//	const int batchSize;
+		//	std::function<bool(int)> condition;
+
+		//public:
+
+		//	LambdaConditionBatchedJob(const Lambda& _lambda, const char* _jobName, int _batchSize, std::function<bool(int)> _condition, int _systemID = -1, Job::Priority _priority = Job::Priority::MEDIUM, bool _needsLargeStack = false)
+		//		: Job(_jobName, ((_numTasks - 1) / _batchSize) + 1, _systemID, _priority, _needsLargeStack)
+		//		, lambda(_lambda)
+		//		, batchSize(_batchSize)
+		//		, condition(_condition)
+		//	{
+
+		//	}
+
+		//	constexpr void DoTask(int taskIndex, const JobContext& context) override
+		//	{
+		//		//int max = totalTasks < (taskIndex + 1) * batchSize ? totalTasks : (taskIndex + 1) * batchSize;
+		//		for (int i = taskIndex * batchSize; condition(i); ++i)
+		//			LambdaCaller<Lambda, std::is_convertible<Lambda, std::function<void(int, const JobContext&)>>::value>(lambda, i, context);
+		//	}
+		//};
+
 		// HERE
 
 		// crea una tasca a partir d'una lambda.
@@ -94,6 +120,12 @@ namespace Utilities
 		{
 			return LambdaBatchedJob<Lambda>(_lambda, _jobName, _batchSize, _numTasks, _systemID, _priority, _needsLargeStack);
 		}
+
+		/*template<typename Lambda>
+		LambdaConditionBatchedJob<Lambda> CreateLambdaConditionBatchedJob(const Lambda& _lambda, const char* _jobName, short _batchSize, std::function<bool(int)> _condition, int _systemID = -1, Job::Priority _priority = Job::Priority::MEDIUM, bool _needsLargeStack = false)
+		{
+			return LambdaConditionBatchedJob<Lambda>(_lambda, _jobName, _batchSize, _condition, _systemID, _priority, _needsLargeStack);
+		}*/
 	}
 }
 

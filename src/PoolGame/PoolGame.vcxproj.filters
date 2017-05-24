@@ -74,5 +74,8 @@
     <ClInclude Include="SOA.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Utils.inl.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
