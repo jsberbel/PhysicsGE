@@ -62,13 +62,14 @@ namespace Utilities
 
 		public:
 
-			LambdaBatchedJob(const Lambda& _lambda, const char* _jobName, int _batchSize, short _numTasks, int _systemID = -1, Job::Priority _priority = Job::Priority::MEDIUM, bool _needsLargeStack = false)
-				: Job(_jobName, ((_numTasks - 1) / _batchSize) + 1, _systemID, _priority, _needsLargeStack)
+			LambdaBatchedJob(const Lambda& _lambda, const char* _jobName, int _batchSize, int _numTasks, int _systemID = -1, Job::Priority _priority = Job::Priority::MEDIUM, bool _needsLargeStack = false)
+				: Job(_jobName, short((_numTasks - 1) / _batchSize) + 1, _systemID, _priority, _needsLargeStack)
 				, lambda(_lambda)
 				, batchSize(_batchSize)
 				, totalTasks(_numTasks)
 			{
-
+				#undef max
+				assert(((_numTasks - 1) / _batchSize) + 1 <= std::numeric_limits<short>::max());
 			}
 
 			constexpr void DoTask(int taskIndex, const JobContext& context) override
@@ -116,7 +117,7 @@ namespace Utilities
 
 		// crea una tasca "batched". Que serà cridada per grups dins dels fibers
 		template<typename Lambda>
-		LambdaBatchedJob<Lambda> CreateLambdaBatchedJob(const Lambda& _lambda, const char* _jobName, short _batchSize, short _numTasks, int _systemID = -1, Job::Priority _priority = Job::Priority::MEDIUM, bool _needsLargeStack = false)
+		LambdaBatchedJob<Lambda> CreateLambdaBatchedJob(const Lambda& _lambda, const char* _jobName, int _batchSize, int _numTasks, int _systemID = -1, Job::Priority _priority = Job::Priority::MEDIUM, bool _needsLargeStack = false)
 		{
 			return LambdaBatchedJob<Lambda>(_lambda, _jobName, _batchSize, _numTasks, _systemID, _priority, _needsLargeStack);
 		}

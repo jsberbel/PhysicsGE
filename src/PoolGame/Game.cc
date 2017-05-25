@@ -19,7 +19,7 @@ namespace Game
 		static constexpr double GameObjectScale = 1.0;
 		static constexpr double GameObjectInvMass = 1.0 / 50.0;
 		static constexpr double GameObjectTotalInvMass = GameObjectInvMass * 2;
-		static constexpr unsigned MaxGameObjects = 15'000u;
+		static constexpr unsigned MaxGameObjects = 100'000u;
 		
 		struct GameObjectList
 		{
@@ -29,8 +29,8 @@ namespace Game
 			double velY[MaxGameObjects];
 
 			// Get extreme functions
-			inline constexpr double getMinX(unsigned i)	{ return posX[i] - GameObjectScale; }
-			inline constexpr double getMaxX(unsigned i) { return posX[i] + GameObjectScale; }
+			constexpr double getMinX(unsigned i) { return posX[i] - GameObjectScale; }
+			constexpr double getMaxX(unsigned i) { return posX[i] + GameObjectScale; }
 		}
 		gameObjects;
 		

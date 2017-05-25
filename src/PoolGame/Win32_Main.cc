@@ -827,7 +827,6 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 			/*for (int k = 0; k < 255; ++k)
 				buttonsPrevKey[k] = buttonsNowKey[k];*/
 
-			Win32::s_Profiler.DrawProfilerToImGUI(numThreads);
 		}
 
 		glClearColor(0.f, 0.4f, 0.2f, 1.f);
@@ -836,36 +835,7 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 		glUseProgram(renderer.programs[0]);
 		glActiveTexture(GL_TEXTURE0 + 0);
 
-		// RENDER SPRITES
-		//auto drawJob = Utilities::TaskManager::CreateLambdaBatchedJob(
-		//	[&renderer, &renderData, &projection](int i, const Utilities::TaskManager::JobContext& context)
-		//{
-		//	glBindTexture(GL_TEXTURE_2D, renderer.textures[static_cast<int>(renderData.sprites[i].texture)]); // get the right texture
-
-		//																									  // create the model matrix, with a scale and a translation.
-		//	glm::mat4 model{
-		//		glm::scale(
-		//			glm::rotate(
-		//			glm::translate(glm::mat4(), glm::vec3(renderData.sprites[i].position, 0.f)),
-		//			renderData.sprites[i].rotation, glm::vec3(0.f, 0.f, 1.f)),
-		//			glm::vec3(renderData.sprites[i].size, 1.f))
-		//	};
-
-		//	// the transform is the addition of the model transformation and the projection
-		//	Win32::InstanceData instanceData{ projection.load() * model , glm::vec4(renderData.sprites[i].color, 1) };
-
-		//	glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[0]);
-		//	glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Win32::InstanceData), static_cast<GLvoid*>(&instanceData));
-
-		//	glBindBufferBase(GL_UNIFORM_BUFFER, 0, renderer.uniforms[0]);
-
-		//	glBindVertexArray(renderer.vaos[0].vao);
-		//	glDrawElements(GL_TRIANGLES, renderer.vaos[0].numIndices, GL_UNSIGNED_SHORT, nullptr);
-		//},
-		//	"Penetration Search",
-		//	renderData.sprites.size() / (renderData.sprites.size() < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads),
-		//	renderData.sprites.size());
-		//Win32::s_JobScheduler.DoAndWait(&drawJob, &mainThreadContext);
+		Win32::s_Profiler.AddProfileMark(Utilities::Profiler::MarkerType::BEGIN, nullptr, "Render");
 		for (auto & sprite : renderData.sprites)
 		{
 			glBindTexture(GL_TEXTURE_2D, renderer.textures[static_cast<int>(sprite.texture)]); // get the right texture
@@ -890,6 +860,9 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 			glBindVertexArray(renderer.vaos[0].vao);
 			glDrawElements(GL_TRIANGLES, renderer.vaos[0].numIndices, GL_UNSIGNED_SHORT, nullptr);
 		}
+		Win32::s_Profiler.AddProfileMark(Utilities::Profiler::MarkerType::END, nullptr, "Render");
+
+		Win32::s_Profiler.DrawProfilerToImGUI(numThreads);
 
 		// RENDER IMGUI
 		ImGui::SetNextWindowPos(ImVec2(inputData.windowHalfSize.x, inputData.windowHalfSize.y), ImGuiSetCond_FirstUseEver);
