@@ -262,36 +262,44 @@ CreateBuffer(const void *data, GLsizei size)
 internal_fn Win32::VAO
 CreateVertexArrayObject(const Win32::VertexTN * vertexs, int numVertexs, const uint16_t * indices, int numIndices)
 {
+	// GENERATE VAO INFO
 	Win32::VAO vao;
 	vao.numIndices = numIndices;
-
 	glGenVertexArrays(1, &vao.vao);
 	glBindVertexArray(vao.vao);
-
 	vao.vbo = CreateBuffer<GL_ARRAY_BUFFER>(vertexs, sizeof(Win32::VertexTN) * numVertexs);  // create an array buffer (vertex buffer)
 	vao.ebo = CreateBuffer<GL_ELEMENT_ARRAY_BUFFER>(indices, sizeof(uint16_t) * numIndices); // create an element array buffer (index buffer)
 
-	glVertexAttribPointer(0, // Vertex Attrib Index
+	// VERTEX POSITION DATA
+	glEnableVertexAttribArray(Win32::Renderer::InputLocation::POSITION);
+	glVertexAttribPointer(Win32::Renderer::InputLocation::POSITION, // Vertex Attrib Index
 		3, GL_FLOAT, // 3 floats
 		GL_FALSE, // no normalization
 		sizeof(Win32::VertexTN), // offset from a vertex to the next
 		reinterpret_cast<GLvoid*>(offsetof(Win32::VertexTN, p)) // offset from the start of the buffer to the first vertex
 	); // positions
-	glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Win32::VertexTN), reinterpret_cast<GLvoid*>(offsetof(Win32::VertexTN, c))); // colors
-	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Win32::VertexTN), reinterpret_cast<GLvoid*>(offsetof(Win32::VertexTN, t))); // textures
+
+	// VERTEX UV DATA
+	glEnableVertexAttribArray(Win32::Renderer::InputLocation::TEXCOORD);
+	glVertexAttribPointer(Win32::Renderer::InputLocation::TEXCOORD, 2, GL_FLOAT, GL_FALSE, sizeof(Win32::VertexTN),
+						  reinterpret_cast<GLvoid*>(offsetof(Win32::VertexTN, t))); // textures
+	//glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Win32::VertexTN), reinterpret_cast<GLvoid*>(offsetof(Win32::VertexTN, c))); // colors
 	//glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(VertexTN), reinterpret_cast<GLvoid*>(offsetof(VertexTN, n))); // normals
 
-	glEnableVertexAttribArray(0);
-	glEnableVertexAttribArray(1);
-	glEnableVertexAttribArray(2);
+	// INSTANCING DATA
+	for (int i = 0; i < 4; ++i)
+	{
+		glEnableVertexAttribArray(Win32::Renderer::InputLocation::MODELMAT + i);
+		glVertexAttribPointer(Win32::Renderer::InputLocation::MODELMAT + i, 4, GL_FLOAT, GL_FALSE, sizeof glm::mat4, (const GLvoid*)(sizeof(GLfloat) * i * 4));
+		glVertexAttribDivisor(Win32::Renderer::InputLocation::MODELMAT + i, 1);
+	}
 
 	// reset default opengl state
 	glBindVertexArray(0);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glDisableVertexAttribArray(0);
-	glDisableVertexAttribArray(1);
-	glDisableVertexAttribArray(2);
+	for (int i = 0; i < 6; ++i)
+		glDisableVertexAttribArray(i);
 
 	return vao;
 }
@@ -488,18 +496,87 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 	renderer.programs[Win32::Renderer::GameScene] = Win32::GenerateProgram(L"Simple.vs", L"Simple.fs");
 	renderer.programs[Win32::Renderer::DearImgui] = Win32::GenerateProgram(L"DearImgui.vert", L"DearImgui.frag");
 
-	Win32::VertexTN vtxs[] {
+	Game::RenderData renderData;
+	renderData.texture = Game::RenderData::TextureID::BALL_WHITE;
+	GLuint instanceModelBuffer;
+	glGenBuffers(1, &instanceModelBuffer);
+	glBindBuffer(GL_ARRAY_BUFFER, instanceModelBuffer);
+	glBufferData(GL_ARRAY_BUFFER, Game::MaxGameObjects * sizeof glm::mat4, &renderData.modelMatrices[0], GL_DYNAMIC_DRAW);
+
+	// UNIFORMS
+	glGenBuffers(Win32::Renderer::UNIFORM_COUNT, renderer.uniforms);
+	{
+		glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[Win32::Renderer::GameScene]);
+		glBufferData(  // sets the buffer content
+					 GL_UNIFORM_BUFFER,		// type of buffer
+					 sizeof Win32::InstanceData,		// size of the buffer content
+					 nullptr,		// content of the buffer
+					 GL_DYNAMIC_DRAW);	// usage of the buffer. DYNAMIC -> will change frequently. DRAW -> from CPU to GPU
+
+		glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[Win32::Renderer::DearImgui]);
+		glBufferData(  // sets the buffer content
+					 GL_UNIFORM_BUFFER,		// type of buffer
+					 sizeof ImVec2,		// size of the buffer content
+					 nullptr,		// content of the buffer
+					 GL_DYNAMIC_DRAW);	// usage of the buffer. DYNAMIC -> will change frequently. DRAW -> from CPU to GPU
+	}
+
+	// GAME VAO
+	Win32::VertexTN vtxs[]{
 		{ glm::vec3 { -1, -1, 0 }, glm::vec3 { 0, 0, 0 }, glm::vec4 { 1, 1, 1, 1 }, glm::vec2 { 0,0 } },
 		{ glm::vec3 { +1, -1, 0 }, glm::vec3 { 0, 0, 0 }, glm::vec4 { 1, 1, 1, 1 }, glm::vec2 { 1,0 } },
 		{ glm::vec3 { -1, +1, 0 }, glm::vec3 { 0, 0, 0 }, glm::vec4 { 1, 1, 1, 1 }, glm::vec2 { 0,1 } },
 		{ glm::vec3 { +1, +1, 0 }, glm::vec3 { 0, 0, 0 }, glm::vec4 { 1, 1, 1, 1 }, glm::vec2 { 1,1 } }
 	};
-	uint16_t idxs[] {
+	uint16_t idxs[]{
 		0, 1, 2,
 		2, 1, 3
 	};
-	renderer.vaos[Win32::Renderer::GameScene] = CreateVertexArrayObject(vtxs, sizeof vtxs / sizeof Win32::VertexTN, idxs, sizeof idxs / sizeof uint16_t);
+	//renderer.vaos[Win32::Renderer::GameScene] = CreateVertexArrayObject(vtxs, sizeof vtxs / sizeof Win32::VertexTN, idxs, sizeof idxs / sizeof uint16_t);
+	// GENERATE VAO INFO
+	{
+		renderer.vaos[Win32::Renderer::GameScene].numIndices = sizeof idxs / sizeof uint16_t;
+		glGenVertexArrays(1, &renderer.vaos[Win32::Renderer::GameScene].vao);
+		glBindVertexArray(renderer.vaos[Win32::Renderer::GameScene].vao);
+		renderer.vaos[Win32::Renderer::GameScene].vbo = 
+			CreateBuffer<GL_ARRAY_BUFFER>(vtxs, sizeof(Win32::VertexTN) * (sizeof vtxs / sizeof Win32::VertexTN));  // create an array buffer (vertex buffer)
+		renderer.vaos[Win32::Renderer::GameScene].ebo = 
+			CreateBuffer<GL_ELEMENT_ARRAY_BUFFER>(idxs, sizeof(uint16_t) * (sizeof idxs / sizeof uint16_t)); // create an element array buffer (index buffer)
+		
+		// VERTEX POSITION DATA
+		glEnableVertexAttribArray(Win32::Renderer::InputLocation::POSITION);
+		glVertexAttribPointer(Win32::Renderer::InputLocation::POSITION, // Vertex Attrib Index
+							  3, GL_FLOAT, // 3 floats
+							  GL_FALSE, // no normalization
+							  sizeof(Win32::VertexTN), // offset from a vertex to the next
+							  reinterpret_cast<GLvoid*>(offsetof(Win32::VertexTN, p)) // offset from the start of the buffer to the first vertex
+		); // positions
 
+		// VERTEX UV DATA
+		glEnableVertexAttribArray(Win32::Renderer::InputLocation::TEXCOORD);
+		glVertexAttribPointer(Win32::Renderer::InputLocation::TEXCOORD, 2, GL_FLOAT, GL_FALSE, sizeof(Win32::VertexTN),
+							  reinterpret_cast<GLvoid*>(offsetof(Win32::VertexTN, t))); // textures
+		//glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Win32::VertexTN), reinterpret_cast<GLvoid*>(offsetof(Win32::VertexTN, c))); // colors
+		//glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(VertexTN), reinterpret_cast<GLvoid*>(offsetof(VertexTN, n))); // normals
+
+		// INSTANCING DATA
+		glBindBuffer(GL_ARRAY_BUFFER, instanceModelBuffer);
+		for (int i = 0; i < 4; ++i)
+		{
+			glEnableVertexAttribArray(Win32::Renderer::InputLocation::MODELMAT + i);
+			glVertexAttribPointer(Win32::Renderer::InputLocation::MODELMAT + i, 4, GL_FLOAT, GL_FALSE, sizeof glm::mat4, (const GLvoid*)(sizeof(GLfloat) * i * 4));
+			glVertexAttribDivisor(Win32::Renderer::InputLocation::MODELMAT + i, 1);
+		}
+
+		// reset default opengl state
+		glBindVertexArray(0);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		for (int i = 0; i < 6; ++i)
+			glDisableVertexAttribArray(i);
+	}
+
+	// IMGUI VAO
 	{
 		glGenVertexArrays(1, &renderer.vaos[Win32::Renderer::DearImgui].vao);
 
@@ -527,29 +604,12 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 		glDisableVertexAttribArray(1);
 		glDisableVertexAttribArray(2);
 	}
-
-	glGenBuffers(Win32::Renderer::UNIFORM_COUNT, renderer.uniforms);
-	{
-		glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[Win32::Renderer::GameScene]);
-		glBufferData(  // sets the buffer content
-					 GL_UNIFORM_BUFFER,		// type of buffer
-					 sizeof Win32::InstanceData,		// size of the buffer content
-					 nullptr,		// content of the buffer
-					 GL_DYNAMIC_DRAW);	// usage of the buffer. DYNAMIC -> will change frequently. DRAW -> from CPU to GPU
-
-		glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[Win32::Renderer::DearImgui]);
-		glBufferData(  // sets the buffer content
-					 GL_UNIFORM_BUFFER,		// type of buffer
-					 sizeof ImVec2,		// size of the buffer content
-					 nullptr,		// content of the buffer
-					 GL_DYNAMIC_DRAW);	// usage of the buffer. DYNAMIC -> will change frequently. DRAW -> from CPU to GPU
-	}
 	
 	// LOAD TEXTURES
 	glGenTextures(Win32::Renderer::TEXTURE_COUNT, renderer.textures);
 	{
 		std::string texturePath;
-		for (int i = static_cast<int>(Game::RenderData::TextureID::BALL_0);
+		for (int i = static_cast<int>(Game::RenderData::TextureID::BALL_WHITE);
 			     i < static_cast<int>(Game::RenderData::TextureID::MAX_BALLS);
 			     ++i)
 		{
@@ -659,7 +719,6 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 		float zoom{ 1.f };
 		bool needsUpdate = false;
 	} camera;
-	
 
 	bool quit{ false };
 	do {
@@ -691,11 +750,8 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 				{
 					inputData.isZooming = true;
 					inputData.mouseWheelZoom = GET_Y_LPARAM(msg.wParam);
-					/*char buffer[50];
-					sprintf_s(buffer, "z: %f\n", inputData.mouseWheelZoom);
-					OutputDebugStringA(buffer);*/
 					constexpr auto maxZoom = 0.f;
-					camera.zoom = camera.zoom >= maxZoom ? camera.zoom - inputData.mouseWheelZoom*0.0005f : maxZoom;
+					camera.zoom = camera.zoom >= maxZoom ? camera.zoom - (camera.zoom*inputData.mouseWheelZoom)/1000 : maxZoom;
 					camera.needsUpdate = true;
 				}
 
@@ -775,7 +831,6 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 			++numFramesElapsed;
 		}
 
-		Game::RenderData renderData;
 		bool hasFinishedUpdating = false;
 
 		auto updateJob = Utilities::TaskManager::CreateLambdaJob([&](int, const Utilities::TaskManager::JobContext &context)
@@ -785,7 +840,7 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 				inputData.dt = static_cast<double>(l_TicksPerFrame) / static_cast<double>(l_PerfCountFrequency);
 				
 				// UPDATE
-				renderData = Update(*gameData, inputData, context);
+				Update(*gameData, renderData, inputData, context);
 
 				LARGE_INTEGER l_UpdateTime;
 				QueryPerformanceCounter(&l_UpdateTime);
@@ -826,41 +881,58 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 
 			/*for (int k = 0; k < 255; ++k)
 				buttonsPrevKey[k] = buttonsNowKey[k];*/
-
 		}
 
 		glClearColor(0.f, 0.4f, 0.2f, 1.f);
 		glClear(GL_COLOR_BUFFER_BIT);
 
-		glUseProgram(renderer.programs[0]);
+		glUseProgram(renderer.programs[Win32::Renderer::GameScene]);
 		glActiveTexture(GL_TEXTURE0 + 0);
 
-		Win32::s_Profiler.AddProfileMark(Utilities::Profiler::MarkerType::BEGIN, nullptr, "Render");
-		for (auto & sprite : renderData.sprites)
-		{
-			glBindTexture(GL_TEXTURE_2D, renderer.textures[static_cast<int>(sprite.texture)]); // get the right texture
+		Win32::s_Profiler.AddProfileMark(Utilities::Profiler::MarkerType::BEGIN, nullptr, "Instanced Rendering");
 
-			// create the model matrix, with a scale and a translation.
-			glm::mat4 model{
-				glm::scale(
-					glm::rotate(
-						glm::translate(glm::mat4(), glm::vec3(sprite.position, 0.f)),
-					sprite.rotation, glm::vec3(0.f, 0.f, 1.f)),
-				glm::vec3(sprite.size, 1.f))
-			};
+		glBindTexture(GL_TEXTURE_2D, renderer.textures[static_cast<int>(Game::RenderData::TextureID::BALL_WHITE)]); // get the right texture
 
-			// the transform is the addition of the model transformation and the projection
-			Win32::InstanceData instanceData{ projection * model , glm::vec4(sprite.color, 1) };
+		Win32::InstanceData instanceData{ projection };
+		glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[Win32::Renderer::GameScene]);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Win32::InstanceData), static_cast<GLvoid*>(&instanceData));
+		glBindBufferBase(GL_UNIFORM_BUFFER, 0, renderer.uniforms[Win32::Renderer::GameScene]);
 
-			glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[0]);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Win32::InstanceData), static_cast<GLvoid*>(&instanceData));
+		glBindBuffer(GL_ARRAY_BUFFER, instanceModelBuffer);
+		glBufferData(GL_ARRAY_BUFFER, Game::MaxGameObjects * sizeof glm::mat4, &renderData.modelMatrices[0], GL_DYNAMIC_DRAW);
 
-			glBindBufferBase(GL_UNIFORM_BUFFER, 0, renderer.uniforms[0]);
-
-			glBindVertexArray(renderer.vaos[0].vao);
-			glDrawElements(GL_TRIANGLES, renderer.vaos[0].numIndices, GL_UNSIGNED_SHORT, nullptr);
-		}
+		glBindVertexArray(renderer.vaos[Win32::Renderer::GameScene].vao);
+		//for (auto & sprite : renderData.sprites) glDrawElements(GL_TRIANGLES, renderer.vaos[0].numIndices, GL_UNSIGNED_SHORT, nullptr);
+		glDrawArraysInstanced(GL_TRIANGLES, 0, 6, Game::MaxGameObjects);
+		/*glDrawElementsInstanced(GL_TRIANGLES, Game::MaxGameObjects*renderer.vaos[Win32::Renderer::GameScene].numIndices, 
+								GL_UNSIGNED_INT, nullptr, Game::MaxGameObjects);*/
+		glBindVertexArray(0);
 		Win32::s_Profiler.AddProfileMark(Utilities::Profiler::MarkerType::END, nullptr, "Render");
+		//-----------------------------------------------------------------------------------------------------------------------------------
+		//for (int i = 0; i < Game::MaxGameObjects; ++i)
+		//{
+		//	glBindTexture(GL_TEXTURE_2D, renderer.textures[static_cast<int>(renderData.sprites[i].texture)]); // get the right texture
+
+		//	// create the model matrix, with a scale and a translation.
+		//	/*glm::mat4 model{
+		//		glm::scale(
+		//			glm::rotate(
+		//				glm::translate(glm::mat4(), glm::vec3(sprite.position, 0.f)),
+		//			sprite.rotation, glm::vec3(0.f, 0.f, 1.f)),
+		//		glm::vec3(sprite.size, 1.f))
+		//	};*/
+
+		//	// the transform is the addition of the model transformation and the projection
+		//	Win32::InstanceData instanceData{ projection * renderData.modelMatrices[i] };
+
+		//	glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[0]);
+		//	glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Win32::InstanceData), static_cast<GLvoid*>(&instanceData));
+
+		//	glBindBufferBase(GL_UNIFORM_BUFFER, 0, renderer.uniforms[0]);
+
+		//	glBindVertexArray(renderer.vaos[0].vao);
+		//	glDrawElements(GL_TRIANGLES, renderer.vaos[0].numIndices, GL_UNSIGNED_SHORT, nullptr);
+		//}
 
 		Win32::s_Profiler.DrawProfilerToImGUI(numThreads);
 

@@ -66,6 +66,11 @@ namespace Win32
 		static constexpr int GameScene { 0x00 };
 		static constexpr int DearImgui { 0x01 };
 
+		enum InputLocation
+		{
+			POSITION, TEXCOORD, MODELMAT
+		};
+
 		enum {
 			//VERTEX_ARRAY_COUNT = 0x02,
 			VAO_COUNT = 0x02,
@@ -84,8 +89,9 @@ namespace Win32
 
 	struct InstanceData
 	{
-		glm::mat4 modelMatrix;
-		glm::vec4 colorModifier;
+		glm::mat4 projection;
+		//glm::mat4 modelMatrix;
+		//glm::vec4 colorModifier;
 	};
 
 	//struct GLData

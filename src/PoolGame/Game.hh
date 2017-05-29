@@ -14,6 +14,8 @@
 
 namespace Game
 {
+	static constexpr unsigned MaxGameObjects = 50'000u;
+	static constexpr double GameObjectScale = 1.0;
 	struct GameData;
 
 	struct InputData
@@ -43,22 +45,7 @@ namespace Game
 	{
 		enum class TextureID
 		{
-			BALL_0,
-			BALL_1,
-			BALL_2,
-			BALL_3,
-			BALL_4,
-			BALL_5,
-			BALL_6,
-			BALL_7,
-			BALL_8,
-			BALL_9,
-			BALL_10,
-			BALL_11,
-			BALL_12,
-			BALL_13,
-			BALL_14,
-			BALL_15,
+			BALL_WHITE,
 			MAX_BALLS,
 			PIXEL,
 			DEARIMGUI,
@@ -81,10 +68,11 @@ namespace Game
 			glm::vec3 color;
 		};
 
-		std::vector<Sprite> sprites;
+		TextureID texture;
+		glm::mat4 modelMatrices[MaxGameObjects];
 	};
 
 	GameData* InitGamedata (const InputData & input);
-	RenderData Update (GameData & gameData, const InputData & inputData, const Utilities::TaskManager::JobContext &context);
+	void Update (GameData & gameData, RenderData & renderData, const InputData & inputData, const Utilities::TaskManager::JobContext &context);
 	void FinalizeGameData (GameData *& gameData);
 }
