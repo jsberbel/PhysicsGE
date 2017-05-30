@@ -1,5 +1,4 @@
 #pragma once
-#include <vector>
 #include <glm/glm.hpp>
 
 #define internal_fn		static
@@ -8,13 +7,11 @@
 
 #define MAX_FPS 60
 
-//#define PARALLEL
-
 #include "TaskManager.hh"
 
 namespace Game
 {
-	static constexpr unsigned MaxGameObjects = 50'000u;
+	static constexpr unsigned MaxGameObjects = 100'000u;
 	static constexpr double GameObjectScale = 1.0;
 	struct GameData;
 

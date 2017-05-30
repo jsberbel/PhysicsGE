@@ -641,6 +641,7 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 	memset(buttonsPrevKey, false, 255);
 	memset(buttonsNowKey, false, 255);
 	ImGuiIO& io = ImGui::GetIO();
+	io.DisplaySize = ImVec2((float)s_screenWidth, (float)s_screenHeight);
 	{
 		io.KeyMap[ImGuiKey_Tab] = VK_TAB;                     // Keyboard mapping. ImGui will use those indices to peek into the io.KeyDown[] array.
 		io.KeyMap[ImGuiKey_LeftArrow] = VK_LEFT;
@@ -802,10 +803,10 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 
 			if (camera.needsUpdate)
 			{
-				projection = glm::ortho(-static_cast<float>((-camera.pos.x + inputData.windowHalfSize.x) * camera.zoom), // left
-										static_cast<float>((camera.pos.x + inputData.windowHalfSize.x) * camera.zoom), // right
-										-static_cast<float>((-camera.pos.y + inputData.windowHalfSize.y) * camera.zoom), // bot
-										static_cast<float>((camera.pos.y + inputData.windowHalfSize.y) * camera.zoom), // top
+				projection = glm::ortho(-static_cast<float>((-camera.pos.x+ inputData.windowHalfSize.x * camera.zoom)), // left
+										static_cast<float>((camera.pos.x + inputData.windowHalfSize.x * camera.zoom)), // right
+										-static_cast<float>((-camera.pos.y + inputData.windowHalfSize.y * camera.zoom)), // bot
+										static_cast<float>((camera.pos.y + inputData.windowHalfSize.y * camera.zoom)), // top
 										-5.0f, 5.0f); // near // far
 				camera.needsUpdate = false;
 			}
@@ -903,11 +904,11 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 
 		glBindVertexArray(renderer.vaos[Win32::Renderer::GameScene].vao);
 		//for (auto & sprite : renderData.sprites) glDrawElements(GL_TRIANGLES, renderer.vaos[0].numIndices, GL_UNSIGNED_SHORT, nullptr);
-		glDrawArraysInstanced(GL_TRIANGLES, 0, 6, Game::MaxGameObjects);
-		/*glDrawElementsInstanced(GL_TRIANGLES, Game::MaxGameObjects*renderer.vaos[Win32::Renderer::GameScene].numIndices, 
-								GL_UNSIGNED_INT, nullptr, Game::MaxGameObjects);*/
+		//glDrawArraysInstanced(GL_TRIANGLES, 0, 6, Game::MaxGameObjects);
+		glDrawElementsInstanced(GL_TRIANGLES,renderer.vaos[Win32::Renderer::GameScene].numIndices, 
+								GL_UNSIGNED_SHORT, nullptr, Game::MaxGameObjects);
 		glBindVertexArray(0);
-		Win32::s_Profiler.AddProfileMark(Utilities::Profiler::MarkerType::END, nullptr, "Render");
+		Win32::s_Profiler.AddProfileMark(Utilities::Profiler::MarkerType::END, nullptr, "Instanced Rendering");
 		//-----------------------------------------------------------------------------------------------------------------------------------
 		//for (int i = 0; i < Game::MaxGameObjects; ++i)
 		//{

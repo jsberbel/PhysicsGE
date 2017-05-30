@@ -2,9 +2,8 @@
 #include <ctime>
 #include <iterator>
 #include <Windows.h>
-#include <string>
 #include <algorithm>
-#include <unordered_map>
+#include <vector>
 
 #include "Profiler.hh"
 
@@ -35,7 +34,7 @@ namespace Game
 		
 		// EXTREMES
 		static constexpr auto ExtremesSize = MaxGameObjects * 2u;
-		struct /*alignas(16)*/ Extreme 
+		struct Extreme 
 		{
 			double val;
 			unsigned index;
@@ -356,7 +355,7 @@ namespace Game
 				}
 			},
 			"Sweep + Fine-Grained + Collision Groups",
-			GameData::ExtremesSize / Utilities::Profiler::MaxNumThreads,
+			GameData::ExtremesSize / (GameData::ExtremesSize < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads),
 			GameData::ExtremesSize
 		);
 		context.DoAndWait(&jobSFG);
