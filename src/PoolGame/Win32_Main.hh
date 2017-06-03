@@ -1,7 +1,5 @@
 #pragma once
 
-#include "Game.hh"
-
 #include <Windows.h>
 
 // opengl math library
@@ -11,25 +9,17 @@
 
 // opengl extension loading library
 #include <GL/glew.h>
-#include "GL/wglew.h"
-
-// freetype library
-#include <ft2build.h>
-#include FT_FREETYPE_H 
+#include "GL/wglew.h" 
 
 // imgui library
 #include "imgui/imgui.h"
 
+#include "Game.hh"
 #include "Profiler.hh"
 #include "TaskManager.hh"
 
-#pragma comment (lib, "opengl32.lib")
 #pragma comment (lib, "Winmm.lib")
-#ifdef _DEBUG
-	#pragma comment (lib, "freetype271d.lib")
-#else
-	#pragma comment (lib, "freetype271.lib")
-#endif
+#pragma comment (lib, "opengl32.lib")
 
 #ifdef NDEBUG
 #define Assert(cnd, ...) (cnd)
@@ -68,7 +58,7 @@ namespace Win32
 
 		enum InputLocation
 		{
-			POSITION, TEXCOORD, MODELMAT
+			POSITION, TEXCOORD, COLOR, MODELMAT
 		};
 
 		enum {
@@ -90,20 +80,7 @@ namespace Win32
 	struct InstanceData
 	{
 		glm::mat4 projection;
-		//glm::mat4 modelMatrix;
-		//glm::vec4 colorModifier;
 	};
-
-	//struct GLData
-	//{
-	//	// pack all render-related data into this struct
-	//	GLuint program;
-	//	VAO quadVAO;
-	//	GLuint instanceDataBuffer;
-
-	//	// map of all textures available
-	//	GLuint textures[static_cast<int>(Game::RenderData::TextureID::COUNT)];
-	//};
 
 	void GenerateWindow(HINSTANCE hInstance, const wchar_t *name);
 	GLuint GenerateProgram(const wchar_t *vertexShader, const wchar_t *fragmentShader);

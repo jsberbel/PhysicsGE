@@ -1,23 +1,22 @@
 #include "Win32_Main.hh"
 #include <map>
-#include <chrono>
 #include <string>
 #include "Allocators.hpp"
 #include "TaskManagerHelpers.hh"
 
 // global static vars
-global_var HGLRC   s_OpenGLRenderingContext		 { nullptr };
-global_var HDC	   s_WindowHandleToDeviceContext { nullptr };
+static HGLRC   s_OpenGLRenderingContext		 { nullptr };
+static HDC	   s_WindowHandleToDeviceContext { nullptr };
 
-global_var bool	   s_windowActive				 { true };
-global_var GLsizei s_screenWidth				 { 1920 }; // 900
-global_var GLsizei s_screenHeight				 { 1080 }; // 600
-global_var GLsizei s_windowResized				 { false };
+static bool	   s_windowActive				 { true };
+static GLsizei s_screenWidth				 { 1920 }; // 900 
+static GLsizei s_screenHeight				 { 1080 }; // 600
+static GLsizei s_windowResized				 { false };
 
 #define GET_X_LPARAM(lp) ((int)(short)LOWORD(lp))
 #define GET_Y_LPARAM(lp) ((int)(short)HIWORD(lp))
 
-internal_fn void GLAPIENTRY
+static void GLAPIENTRY
 openGLDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam)
 {
 	OutputDebugStringA("openGL Debug Callback : [");
@@ -105,9 +104,7 @@ WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 		wglMakeCurrent(s_WindowHandleToDeviceContext, tmpContext);
 
 		// init glew
-		GLenum err{ glewInit() };
-		if (err != GLEW_OK)
-			assert(false); // TODO
+		Assert(glewInit() == GLEW_OK);
 
 		int attribs[] {
 			WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
@@ -182,7 +179,7 @@ WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	return 0;
 }
 
-internal_fn bool
+static constexpr bool
 CompileShader(GLuint &shaderId_, const uint8_t* shaderCode, GLenum shaderType)
 {
 	shaderId_ = glCreateShader(shaderType);
@@ -191,11 +188,9 @@ CompileShader(GLuint &shaderId_, const uint8_t* shaderCode, GLenum shaderType)
 
 	GLint success = 0;
 	glGetShaderiv(shaderId_, GL_COMPILE_STATUS, &success);
-
 	{
 		GLint maxLength = 0;
 		glGetShaderiv(shaderId_, GL_INFO_LOG_LENGTH, &maxLength);
-
 		if (maxLength > 0)
 		{
 			//The maxLength includes the NULL character
@@ -211,15 +206,12 @@ CompileShader(GLuint &shaderId_, const uint8_t* shaderCode, GLenum shaderType)
 	return (success != GL_FALSE);
 }
 
-internal_fn bool
+static constexpr bool
 LinkShaders(GLuint &programId_, GLuint &vs, GLuint &ps)
 {
 	programId_ = glCreateProgram();
-
 	glAttachShader(programId_, vs);
-
 	glAttachShader(programId_, ps);
-
 	glLinkProgram(programId_);
 
 	GLint success{ 0 };
@@ -227,7 +219,6 @@ LinkShaders(GLuint &programId_, GLuint &vs, GLuint &ps)
 	{
 		GLint maxLength{ 0 };
 		glGetProgramiv(programId_, GL_INFO_LOG_LENGTH, &maxLength);
-
 		if (maxLength > 0)
 		{
 			//The maxLength includes the NULL character
@@ -244,7 +235,7 @@ LinkShaders(GLuint &programId_, GLuint &vs, GLuint &ps)
 }
 
 template <GLuint type, GLenum usage = GL_STATIC_DRAW>
-internal_fn GLuint
+static constexpr GLuint
 CreateBuffer(const void *data, GLsizei size)
 {
 	GLuint buffer;
@@ -259,7 +250,7 @@ CreateBuffer(const void *data, GLsizei size)
 	return buffer;
 }
 
-internal_fn Win32::VAO
+static inline Win32::VAO
 CreateVertexArrayObject(const Win32::VertexTN * vertexs, int numVertexs, const uint16_t * indices, int numIndices)
 {
 	// GENERATE VAO INFO
@@ -308,7 +299,7 @@ CreateVertexArrayObject(const Win32::VertexTN * vertexs, int numVertexs, const u
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
 
-internal_fn GLuint
+static inline GLuint
 LoadTexture(const char* path)
 {
 	GLuint result;
@@ -326,9 +317,9 @@ LoadTexture(const char* path)
 	return result;
 }
 
-inline bool HandleMouse(const MSG& msg, Game::InputData &data_)
+static constexpr bool
+HandleMouse(const MSG& msg, Game::InputData &data_)
 {
-	//data_.mouseWheelZoom = 0.f;
 	switch (msg.message)
 	{
 		case WM_LBUTTONDOWN:
@@ -355,7 +346,8 @@ inline bool HandleMouse(const MSG& msg, Game::InputData &data_)
 	}
 }
 
-inline void RenderDearImgui(const Win32::Renderer &renderer)
+static inline void
+RenderDearImgui(const Win32::Renderer &renderer)
 {
 	ImDrawData* draw_data = ImGui::GetDrawData(); // instructions list to draw
 
@@ -444,7 +436,7 @@ void Win32::GenerateWindow(HINSTANCE hInstance, const wchar_t *name)
 	wc.lpszClassName = name; // Specifies the window class name
 	wc.style = CS_OWNDC; // Class styles: CS_OWNDC -> Allocates a unique device context for each window in the class
 
-	Assert (RegisterClass(&wc)); // Registers a window class for subsequent use in calls
+	Assert(RegisterClass(&wc)); // Registers a window class for subsequent use in calls
 	HWND hWnd { CreateWindowW(wc.lpszClassName, name, // Class name initialized before // Window name
 							  WS_OVERLAPPEDWINDOW | WS_VISIBLE, // Style of the window created
 							  CW_USEDEFAULT, CW_USEDEFAULT, // Window position in device units
@@ -486,7 +478,7 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 		QueryPerformanceFrequency(&PerfCountFrequencyResult);
 		l_PerfCountFrequency = PerfCountFrequencyResult.QuadPart;
 	}
-	int64_t l_TicksPerFrame = l_PerfCountFrequency / MAX_FPS;
+	int64_t l_TicksPerFrame = l_PerfCountFrequency / Game::MaxFPS;
 
 	// LOAD WINDOW STUFF
 	Win32::GenerateWindow(hInstance, L"Pool Game");
@@ -498,10 +490,16 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 
 	Game::RenderData renderData;
 	renderData.texture = Game::RenderData::TextureID::BALL_WHITE;
+
 	GLuint instanceModelBuffer;
 	glGenBuffers(1, &instanceModelBuffer);
 	glBindBuffer(GL_ARRAY_BUFFER, instanceModelBuffer);
 	glBufferData(GL_ARRAY_BUFFER, Game::MaxGameObjects * sizeof glm::mat4, &renderData.modelMatrices[0], GL_DYNAMIC_DRAW);
+
+	GLuint colorBuffer;
+	glGenBuffers(1, &colorBuffer);
+	glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+	glBufferData(GL_ARRAY_BUFFER, Game::MaxGameObjects * sizeof glm::vec4, &renderData.colors[0], GL_DYNAMIC_DRAW);
 
 	// UNIFORMS
 	glGenBuffers(Win32::Renderer::UNIFORM_COUNT, renderer.uniforms);
@@ -550,13 +548,19 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 							  GL_FALSE, // no normalization
 							  sizeof(Win32::VertexTN), // offset from a vertex to the next
 							  reinterpret_cast<GLvoid*>(offsetof(Win32::VertexTN, p)) // offset from the start of the buffer to the first vertex
-		); // positions
+		);
 
 		// VERTEX UV DATA
 		glEnableVertexAttribArray(Win32::Renderer::InputLocation::TEXCOORD);
 		glVertexAttribPointer(Win32::Renderer::InputLocation::TEXCOORD, 2, GL_FLOAT, GL_FALSE, sizeof(Win32::VertexTN),
-							  reinterpret_cast<GLvoid*>(offsetof(Win32::VertexTN, t))); // textures
-		//glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Win32::VertexTN), reinterpret_cast<GLvoid*>(offsetof(Win32::VertexTN, c))); // colors
+							  reinterpret_cast<GLvoid*>(offsetof(Win32::VertexTN, t)));
+
+		// VERTEX COLOR DATA
+		glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+		glEnableVertexAttribArray(Win32::Renderer::InputLocation::COLOR);
+		glVertexAttribPointer(Win32::Renderer::InputLocation::COLOR, 4, GL_FLOAT, GL_FALSE, sizeof glm::vec4,
+								(const GLvoid*)(sizeof(GLfloat) * 0));
+		glVertexAttribDivisor(Win32::Renderer::InputLocation::COLOR, 1);
 		//glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(VertexTN), reinterpret_cast<GLvoid*>(offsetof(VertexTN, n))); // normals
 
 		// INSTANCING DATA
@@ -608,14 +612,15 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 	// LOAD TEXTURES
 	glGenTextures(Win32::Renderer::TEXTURE_COUNT, renderer.textures);
 	{
-		std::string texturePath;
+		/*std::string texturePath;
 		for (int i = static_cast<int>(Game::RenderData::TextureID::BALL_WHITE);
 			     i < static_cast<int>(Game::RenderData::TextureID::MAX_BALLS);
 			     ++i)
 		{
 			texturePath = "../../res/images/ball" + std::to_string(i) + ".png";
 			renderer.textures[i] = LoadTexture(texturePath.c_str());
-		}
+		}*/
+		renderer.textures[static_cast<int>(Game::RenderData::TextureID::BALL_WHITE)] = LoadTexture("../../res/images/ball14.png");
 		renderer.textures[static_cast<int>(Game::RenderData::TextureID::PIXEL)] = LoadTexture("../../res/images/pixel.png");
 
 		// TODO reload imgui
@@ -778,26 +783,25 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 			}
 
 			// MOVE CAMERA
-			constexpr auto speed = 500.f;
+			constexpr auto speed = 600.f;
 			if (buttonsNowKey[0x41]) // A
 			{
-				camera.pos.x -= speed*inputData.dt;
+				camera.pos.x -= speed*inputData.dt*(camera.zoom * 2);
 				camera.needsUpdate = true;
-				
 			}
 			if (buttonsNowKey[0x44]) // D
 			{
-				camera.pos.x += speed*inputData.dt;
+				camera.pos.x += speed*inputData.dt*(camera.zoom * 2);
 				camera.needsUpdate = true;
 			}
 			if (buttonsNowKey[0x53]) // S
 			{
-				camera.pos.y -= speed*inputData.dt;
+				camera.pos.y -= speed*inputData.dt*(camera.zoom * 2);
 				camera.needsUpdate = true;
 			}
 			if (buttonsNowKey[0x57]) // W
 			{
-				camera.pos.y += speed*inputData.dt;
+				camera.pos.y += speed*inputData.dt*(camera.zoom * 2);
 				camera.needsUpdate = true;
 			}
 
@@ -833,10 +837,9 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 		}
 
 		bool hasFinishedUpdating = false;
-
 		auto updateJob = Utilities::TaskManager::CreateLambdaJob([&](int, const Utilities::TaskManager::JobContext &context)
 		{
-			for (int i = 0; i < 1; ++i)
+			for (int i = 0; i < numFramesElapsed; ++i)
 			{
 				inputData.dt = static_cast<double>(l_TicksPerFrame) / static_cast<double>(l_PerfCountFrequency);
 				
@@ -871,43 +874,39 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 			io.DeltaTime = float(inputData.dt);
 			io.MouseDown[0] = inputData.mouseButtonL == Game::InputData::ButtonState::DOWN || inputData.mouseButtonL == Game::InputData::ButtonState::HOLD;
 			io.MouseDown[1] = inputData.mouseButtonR == Game::InputData::ButtonState::DOWN || inputData.mouseButtonR == Game::InputData::ButtonState::HOLD;
-			//io.MouseWheel = inputData.mouseWheelZoom;
-			//io.MouseDrawCursor = true;
 			io.MousePos = ImVec2(float(inputData.mousePosition.x), float(inputData.mousePosition.y));
-			/*io.KeysDown[io.KeyMap[ImGuiKey_Enter]] = buttonsNowKey[VK_RETURN];
-			io.KeysDown[io.KeyMap[ImGuiKey_A]] = buttonsNowKey[0x41];
-			if (!buttonsPrevKey[0x41] && buttonsNowKey[0x41])
-				io.AddInputCharacter(io.KeyMap[ImGuiKey_A]);*/
 			ImGui::NewFrame();
 
 			/*for (int k = 0; k < 255; ++k)
 				buttonsPrevKey[k] = buttonsNowKey[k];*/
 		}
 
-		glClearColor(0.f, 0.4f, 0.2f, 1.f);
+		glClearColor(0.f, 0.0f, 0.0f, 1.f);
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		glUseProgram(renderer.programs[Win32::Renderer::GameScene]);
 		glActiveTexture(GL_TEXTURE0 + 0);
 
 		Win32::s_Profiler.AddProfileMark(Utilities::Profiler::MarkerType::BEGIN, nullptr, "Instanced Rendering");
+		{
+			glBindTexture(GL_TEXTURE_2D, renderer.textures[static_cast<int>(Game::RenderData::TextureID::BALL_WHITE)]); // get the right texture
 
-		glBindTexture(GL_TEXTURE_2D, renderer.textures[static_cast<int>(Game::RenderData::TextureID::BALL_WHITE)]); // get the right texture
+			Win32::InstanceData instanceData{ projection };
+			glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[Win32::Renderer::GameScene]);
+			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Win32::InstanceData), static_cast<GLvoid*>(&instanceData));
+			glBindBufferBase(GL_UNIFORM_BUFFER, 0, renderer.uniforms[Win32::Renderer::GameScene]);
 
-		Win32::InstanceData instanceData{ projection };
-		glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[Win32::Renderer::GameScene]);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Win32::InstanceData), static_cast<GLvoid*>(&instanceData));
-		glBindBufferBase(GL_UNIFORM_BUFFER, 0, renderer.uniforms[Win32::Renderer::GameScene]);
+			glBindBuffer(GL_ARRAY_BUFFER, instanceModelBuffer);
+			glBufferData(GL_ARRAY_BUFFER, Game::MaxGameObjects * sizeof glm::mat4, &renderData.modelMatrices[0], GL_DYNAMIC_DRAW);
 
-		glBindBuffer(GL_ARRAY_BUFFER, instanceModelBuffer);
-		glBufferData(GL_ARRAY_BUFFER, Game::MaxGameObjects * sizeof glm::mat4, &renderData.modelMatrices[0], GL_DYNAMIC_DRAW);
+			glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+			glBufferData(GL_ARRAY_BUFFER, Game::MaxGameObjects * sizeof glm::vec4, &renderData.colors[0], GL_DYNAMIC_DRAW);
 
-		glBindVertexArray(renderer.vaos[Win32::Renderer::GameScene].vao);
-		//for (auto & sprite : renderData.sprites) glDrawElements(GL_TRIANGLES, renderer.vaos[0].numIndices, GL_UNSIGNED_SHORT, nullptr);
-		//glDrawArraysInstanced(GL_TRIANGLES, 0, 6, Game::MaxGameObjects);
-		glDrawElementsInstanced(GL_TRIANGLES,renderer.vaos[Win32::Renderer::GameScene].numIndices, 
-								GL_UNSIGNED_SHORT, nullptr, Game::MaxGameObjects);
-		glBindVertexArray(0);
+			glBindVertexArray(renderer.vaos[Win32::Renderer::GameScene].vao);
+			glDrawElementsInstanced(GL_TRIANGLES, renderer.vaos[Win32::Renderer::GameScene].numIndices,
+									GL_UNSIGNED_SHORT, nullptr, Game::MaxGameObjects);
+			glBindVertexArray(0);
+		}
 		Win32::s_Profiler.AddProfileMark(Utilities::Profiler::MarkerType::END, nullptr, "Instanced Rendering");
 		//-----------------------------------------------------------------------------------------------------------------------------------
 		//for (int i = 0; i < Game::MaxGameObjects; ++i)

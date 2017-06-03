@@ -1,6 +1,22 @@
 #pragma once
 
 template<class T>
+struct TVec2
+{
+	union {
+		T v[3];
+		struct { T x, y, z; };
+		struct { T r, g, b; };
+		struct { T s, t, p; };
+	};
+};
+
+typedef TVec2<int> iVec2;
+typedef TVec2<float> fVec2;
+typedef TVec2<double> dVec2;
+typedef TVec2<unsigned> uVec2;
+
+template<class T>
 inline constexpr int sgn(T val)
 {
 	return val < T(0) ? -1 : 1;

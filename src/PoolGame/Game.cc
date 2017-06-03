@@ -16,19 +16,19 @@ namespace Game
 	struct GameData
 	{
 		// Constants
-		static constexpr double GameObjectInvMass = 1.0 / 50.0;
-		static constexpr double GameObjectTotalInvMass = GameObjectInvMass * 2;
+		static constexpr auto GameObjectInvMass = 1.f / 50.f;
+		static constexpr auto GameObjectTotalInvMass = GameObjectInvMass * 2.f;
 		
 		struct GameObjectList
 		{
-			double posX[MaxGameObjects];
-			double posY[MaxGameObjects];
-			double velX[MaxGameObjects];
-			double velY[MaxGameObjects];
+			float posX[MaxGameObjects];
+			float posY[MaxGameObjects];
+			float velX[MaxGameObjects];
+			float velY[MaxGameObjects];
 
 			// Get extreme functions
-			constexpr double getMinX(unsigned i) { return posX[i] - GameObjectScale; }
-			constexpr double getMaxX(unsigned i) { return posX[i] + GameObjectScale; }
+			constexpr float getMinX(unsigned i) { return posX[i] - GameObjectScale; }
+			constexpr float getMaxX(unsigned i) { return posX[i] + GameObjectScale; }
 		}
 		gameObjects;
 		
@@ -36,35 +36,32 @@ namespace Game
 		static constexpr auto ExtremesSize = MaxGameObjects * 2u;
 		struct Extreme 
 		{
-			double val;
+			float val;
 			unsigned index;
 			bool min;
 			friend inline bool operator <(const Extreme & lhs, const Extreme & rhs) { return (lhs.val < rhs.val); }
 		} 
 		extremes[ExtremesSize];
 
-		// POSSIBLE COLLISIONS
-		//struct PossibleCollission { unsigned a, b; };
-		//std::vector<PossibleCollission> possibleCollisions[Utilities::Profiler::MaxNumThreads];
-
 		struct ContactData
 		{
 			unsigned a, b;
-			double normalX;
-			double normalY;
+			//fVec2 normal;
+			float normalX;
+			float normalY;
+			float penetatrion;
 			//GameObjectData pointX;
 			//GameObjectData pointY;
-			double penetatrion;
-			// double totalInvMass; // GameObjectInvMass*2
-			//double restitution, friction;
+			//float totalInvMass; // GameObjectInvMass*2
+			//float restitution, friction;
 		};
-		//std::vector<ContactData> contactDataList[Utilities::Profiler::MaxNumThreads];
 
 		struct ContactGroup
 		{
 			std::vector<unsigned> objectIndexes;
 			std::vector<ContactData> contacts;
 		};
+
 		std::vector<ContactGroup> contactGroups[Utilities::Profiler::MaxNumThreads];
 		unsigned contactGroupsSizes[Utilities::Profiler::MaxNumThreads];
 	};
@@ -75,19 +72,39 @@ namespace Game
 
 		GameData * gameData = new GameData;
 
-		const auto initX = int(- input.windowHalfSize.x + GameObjectScale);
-		const auto initY = int(- input.windowHalfSize.y + GameObjectScale);
-		const auto maxCols = (input.windowHalfSize.x * 2) / (GameObjectScale * 4);
-		const auto maxRows = (input.windowHalfSize.y * 2) / (GameObjectScale * 4);
+		const int screenWidth = input.windowHalfSize.x * 2;
+		const int screenHeight = input.windowHalfSize.y * 2;
+		const auto aspectRatio = float(screenWidth) / float(screenHeight);
+		const int maxCols = pow(MaxGameObjects, 1/aspectRatio);
+		const int maxRows = MaxGameObjects / maxCols;
+		const auto initX = -input.windowHalfSize.x + ((float)screenWidth / (float)maxCols)/2.f;
+		const auto initY = -input.windowHalfSize.y + ((float)screenHeight / (float)maxRows)/2.f;
+		/*for (auto i = 0u; i < MaxGameObjects; ++i)
+		{
+			gameData->gameObjects.posX[i] = initX + (float(i % maxCols) * ((float)screenWidth / (float)maxCols));
+			gameData->gameObjects.posY[i] = initY + (float(i / maxCols) * ((float)screenHeight / (float)maxRows - 1));
+			gameData->gameObjects.velX[i] = (rand() % 100 + 50) * (1 - round(float(rand()) / RAND_MAX) * 2.0);
+			gameData->gameObjects.velY[i] = (rand() % 100 + 50) * (1 - round(float(rand()) / RAND_MAX) * 2.0);
+		}*/
+		
+		/*for (auto i = 0u; i < MaxGameObjects; ++i)
+		{
+			gameData->gameObjects.posX[i] = rand() % int(input.windowHalfSize.x * 2 - GameObjectScale*2) + -input.windowHalfSize.x+ GameObjectScale * 2;
+			gameData->gameObjects.posY[i] = rand() % int(input.windowHalfSize.y * 2 - GameObjectScale*2) + -input.windowHalfSize.y+ GameObjectScale * 2;
+			gameData->gameObjects.velX[i] = (rand() % 100 + 50) * (1 - round(float(rand()) / RAND_MAX) * 2.0);
+			gameData->gameObjects.velY[i] = (rand() % 100 + 50) * (1 - round(float(rand()) / RAND_MAX) * 2.0);
+		}
+*/
 		for (auto i = 0u; i < MaxGameObjects; ++i)
 		{
-			//gameData->gameObjects.posX[i] = (i % int(maxCols)) * GameData::GameObjectScale * 4 - initX;
-			//gameData->gameObjects.posY[i] = int(i / (maxCols)) * GameData::GameObjectScale * 4 + initY;
-			gameData->gameObjects.posX[i] = rand() % int(input.windowHalfSize.x * 2 - GameObjectScale*2) + initX;
-			gameData->gameObjects.posY[i] = rand() % int(input.windowHalfSize.y * 2 - GameObjectScale*2) + initY;
-			gameData->gameObjects.velX[i] = (rand() % 100 + 50) * (1 - round(double(rand()) / RAND_MAX) * 2.0);
-			gameData->gameObjects.velY[i] = (rand() % 100 + 50) * (1 - round(double(rand()) / RAND_MAX) * 2.0);
+			gameData->gameObjects.posX[i] = int(i*GameObjectScale * 2) % int(input.windowHalfSize.x * 2 - GameObjectScale * 2) +
+				-input.windowHalfSize.x + GameObjectScale * 2;
+			gameData->gameObjects.posY[i] = ((int(i*GameObjectScale * 100) / int(input.windowHalfSize.x * 2 - GameObjectScale * 2))) %
+				int(input.windowHalfSize.y * 2 - GameObjectScale * 2) + -input.windowHalfSize.y + GameObjectScale * 2;
+			gameData->gameObjects.velX[i] = (rand() % 100 + 50) * (1 - round(float(rand()) / RAND_MAX) * 2.0);
+			gameData->gameObjects.velY[i] = (rand() % 100 + 50) * (1 - round(float(rand()) / RAND_MAX) * 2.0);
 		}
+
 		return gameData;
 	}
 
@@ -100,7 +117,7 @@ namespace Game
 		}
 	}
 
-	InputData::ButtonState InputData::ProcessKey(const bool & prevKey, const bool & nowKey)
+	constexpr InputData::ButtonState InputData::ProcessKey(const bool & prevKey, const bool & nowKey)
 	{
 		if (!prevKey && nowKey)
 			return ButtonState::DOWN;
@@ -114,12 +131,13 @@ namespace Game
 		return ButtonState::NONE;
 	}
 
-	inline void UpdateGameObjects(GameData::GameObjectList &gameObjects_, const InputData& inputData, const Utilities::TaskManager::JobContext &context)
+	inline void UpdateGameObjects(GameData::GameObjectList &gameObjects_, RenderData & renderData,
+								  const InputData& inputData, const Utilities::TaskManager::JobContext &context)
 	{
 		auto job = Utilities::TaskManager::CreateLambdaBatchedJob(
-			[&gameObjects_, &inputData](int i, const Utilities::TaskManager::JobContext& context)
+			[&gameObjects_, &renderData, &inputData](int i, const Utilities::TaskManager::JobContext& context)
 			{
-			static constexpr double k0 = 0.99/*0.8*/, k1 = 0.1, k2 = 0.01;
+			static constexpr float k0 = 0.99/*0.8*/, k1 = 0.1, k2 = 0.01;
 
 			auto &posX = gameObjects_.posX[i];
 			auto &posY = gameObjects_.posY[i];
@@ -127,17 +145,17 @@ namespace Game
 			auto &velY = gameObjects_.velY[i];
 
 			// COMPUTE FRICTION
-			double frictionX = 0, frictionY = 0;
-			const double brakeValue{ pow(k0, inputData.dt) };
-			const double speed{ length(velX, velY) };
+			float frictionX = 0, frictionY = 0;
+			const float brakeValue{ pow(k0, inputData.dt) };
+			const float speed{ length(velX, velY) };
 			if (speed > 0)
 			{
-				const double fv{ k1 * speed + k2 * speed * speed };
+				const float fv{ k1 * speed + k2 * speed * speed };
 				frictionX -= fv * (velX / speed);
 				frictionY -= fv * (velY / speed);
 			}
-			const double accelerationX{ frictionX * GameData::GameObjectInvMass };
-			const double accelerationY{ frictionY * GameData::GameObjectInvMass };
+			const float accelerationX{ frictionX * GameData::GameObjectInvMass };
+			const float accelerationY{ frictionY * GameData::GameObjectInvMass };
 
 			// COMPUTE POSITION & VELOCITY
 			const auto kdt = (inputData.dt * inputData.dt) / 2.0;
@@ -160,9 +178,11 @@ namespace Game
 				posY = inputData.windowHalfSize.y - GameObjectScale, velY = -velY;
 			else if (posY < -inputData.windowHalfSize.y + GameObjectScale)
 				posY = -inputData.windowHalfSize.y + GameObjectScale, velY = -velY;
+
+			renderData.colors[i] = { 1, 1, 1, 1 };
 			},
 			"Update Positions",
-			MaxGameObjects / (MaxGameObjects < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads),
+			MaxGameObjects / (Utilities::Profiler::MaxNumThreads - 1),
 			MaxGameObjects);
 
 		context.DoAndWait(&job);
@@ -195,11 +215,11 @@ namespace Game
 	inline void GenerateContactGroups(GameData & gameData, int createdGroups[Utilities::Profiler::MaxNumThreads][MaxGameObjects],
 									  const GameData::ContactData & contact, const Utilities::TaskManager::JobContext & context)
 	{
-		auto *it = &createdGroups[context.threadIndex][contact.a]; // busquem si ja tenim alguna colisió amb l'objecte "a"
-		if (*it == -1)
+		auto it = createdGroups[context.threadIndex][contact.a]; // busquem si ja tenim alguna colisió amb l'objecte "a"
+		if (it == -1)
 		{
-			it = &createdGroups[context.threadIndex][contact.b]; // busquem si ja tenim alguna colisió amb l'objecte "b"
-			if (*it == -1)
+			it = createdGroups[context.threadIndex][contact.b]; // busquem si ja tenim alguna colisió amb l'objecte "b"
+			if (it == -1)
 			{
 				if (gameData.contactGroupsSizes[context.threadIndex] < gameData.contactGroups[context.threadIndex].size())
 				{
@@ -221,36 +241,35 @@ namespace Game
 			}
 			else
 			{
-				gameData.contactGroups[context.threadIndex][*it].contacts.push_back(contact); // afegim la colisió a la llista
-				gameData.contactGroups[context.threadIndex][*it].objectIndexes.push_back(contact.a);
-				createdGroups[context.threadIndex][contact.a] = *it; // guardem referència de l'objecte que no hem trobat abans
+				gameData.contactGroups[context.threadIndex][it].contacts.push_back(contact); // afegim la colisió a la llista
+				gameData.contactGroups[context.threadIndex][it].objectIndexes.push_back(contact.a);
+				createdGroups[context.threadIndex][contact.a] = it; // guardem referència de l'objecte que no hem trobat abans
 			}
 		}
 		else
 		{
-			auto &groupA = *it;
+			auto &groupA = it;
 			gameData.contactGroups[context.threadIndex][groupA].contacts.push_back(contact);
 
-			auto *itB = &createdGroups[context.threadIndex][contact.b];
-			if (*itB == -1)
+			auto itB = createdGroups[context.threadIndex][contact.b];
+			if (itB == -1)
 			{
 				gameData.contactGroups[context.threadIndex][groupA].objectIndexes.push_back(contact.b);
 				createdGroups[context.threadIndex][contact.b] = groupA;
 			}
 			else
 			{
-				auto &groupB = *itB;
+				auto &groupB = itB;
 
 				if (groupA != groupB)
 				{
 					// el objecte b ja és a un grup diferent, fem merge dels 2 grups.
 
 					// 1 - copiem tot el grup anterior
-					for (auto& cnt : gameData.contactGroups[context.threadIndex][groupB].contacts)
+					for (auto &cnt : gameData.contactGroups[context.threadIndex][groupB].contacts)
 						gameData.contactGroups[context.threadIndex][groupA].contacts.push_back(cnt);
 
-					// 2 - copiem els elements del segon grup i actualitzem el mapa
-					//     de grups
+					// 2 - copiem els elements del segon grup i actualitzem el mapa de grups
 					for (auto &index : gameData.contactGroups[context.threadIndex][groupB].objectIndexes)
 					{
 						if (index != contact.a)
@@ -271,7 +290,7 @@ namespace Game
 	//   2 - Crear una llista ordenada amb cada extrem anotat ( o1min , o1max, o2min, o3min, o2max, o3max )
 	//   3 - Des de cada "min" anotar tots els "min" que es trobin abans de trobar el "max" corresponent a aquest objecte.
 	//        aquests son les possibles colisions.
-	inline void SortAndSweep(GameData & gameData, const Utilities::TaskManager::JobContext &context)
+	inline void SortAndSweep(GameData & gameData, RenderData & renderData, const Utilities::TaskManager::JobContext &context)
 	{
 		auto jobExtremes = Utilities::TaskManager::CreateLambdaBatchedJob(
 			[&gameData](unsigned i, const Utilities::TaskManager::JobContext& context)
@@ -280,18 +299,18 @@ namespace Game
 				gameData.extremes[i * 2 + 1] = { gameData.gameObjects.getMaxX(i), i, false };
 			},
 			"Generate Extremes",
-			MaxGameObjects / Utilities::Profiler::MaxNumThreads,
+			MaxGameObjects / (Utilities::Profiler::MaxNumThreads - 1),
 			MaxGameObjects);
 		context.DoAndWait(&jobExtremes);
 
-		static constexpr auto NumMergeGroups = 32u; // IMPORTANT: ONLY POWER OF TWO
+		static constexpr auto NumMergeGroups = 8u; // IMPORTANT: ONLY POWER OF TWO
 		std::atomic_int groupCounter = 0;
 		auto sortJob = Utilities::TaskManager::CreateLambdaJob(
 			[&gameData, &groupCounter](int i, const Utilities::TaskManager::JobContext& context)
 		{
 			const int index = groupCounter++;
-			const int first = GameData::ExtremesSize * (double(index) / double(NumMergeGroups));
-			const int last = GameData::ExtremesSize * (double(index + 1) / double(NumMergeGroups));
+			const int first = GameData::ExtremesSize * (float(index) / float(NumMergeGroups));
+			const int last = GameData::ExtremesSize * (float(index + 1) / float(NumMergeGroups));
 			std::sort(gameData.extremes + first, gameData.extremes + last);
 		},
 			"Divide & Sort Extremes",
@@ -305,21 +324,21 @@ namespace Game
 		{
 			mergeDivisions /= 2;
 			groupCounter = 0;
-			std::copy(gameData.extremes, gameData.extremes + GameData::ExtremesSize, copiedExtremes);
 			auto mergeJob = Utilities::TaskManager::CreateLambdaJob(
 				[&gameData, &groupCounter, &mergeDivisions, &copiedExtremes](int i, const Utilities::TaskManager::JobContext& context)
 			{
 				const int index = groupCounter++;
-				const int first = GameData::ExtremesSize * (double(index) / double(mergeDivisions));
-				const int middle = first + double(GameData::ExtremesSize / mergeDivisions) / 2.0;
-				const int last = GameData::ExtremesSize * (double(index + 1) / double(mergeDivisions));
+				const int first = GameData::ExtremesSize * (float(index) / float(mergeDivisions));
+				const int middle = first + float(GameData::ExtremesSize / mergeDivisions) / 2.0;
+				const int last = GameData::ExtremesSize * (float(index + 1) / float(mergeDivisions));
+				std::copy(gameData.extremes + first, gameData.extremes + last, copiedExtremes + first);
 				std::merge(copiedExtremes + first,
 						   copiedExtremes + middle,
 						   copiedExtremes + middle,
 						   copiedExtremes + last,
 						   gameData.extremes + first);
 			},
-				"Merge Sort Extremes",
+				"Merge Extremes",
 				mergeDivisions
 				);
 			context.DoAndWait(&mergeJob);
@@ -338,7 +357,7 @@ namespace Game
 		context.AddProfileMark(Utilities::Profiler::MarkerType::END_FUNCTION, nullptr, "Declarate Groups");
 
 		auto jobSFG = Utilities::TaskManager::CreateLambdaBatchedJob(
-			[&gameData, &createdGroups](int i, const Utilities::TaskManager::JobContext& context)
+			[&gameData, &renderData, &createdGroups](int i, const Utilities::TaskManager::JobContext& context)
 			{
 				if (gameData.extremes[i].min)
 				{
@@ -346,6 +365,8 @@ namespace Game
 					{
 						if (gameData.extremes[j].min && HasCollision(gameData.gameObjects, gameData.extremes[i].index, gameData.extremes[j].index))
 						{
+							renderData.colors[gameData.extremes[i].index] = { 2, 0, 2, 1 };
+							renderData.colors[gameData.extremes[j].index] = { 0, 2, 2, 1 };
 							GenerateContactGroups(gameData,
 												  createdGroups,
 												  GenerateContactData(gameData.gameObjects, gameData.extremes[i].index, gameData.extremes[j].index),
@@ -372,16 +393,16 @@ namespace Game
 		auto &velXB = gameObjects.velX[contactData.b];
 		auto &velYB = gameObjects.velY[contactData.b];
 
-		//double approachVel = glm::dot(contactData->a - contactData->b->vel, glm::normalize(contactData->a->pos - contactData->b->pos));
+		//float approachVel = glm::dot(contactData->a - contactData->b->vel, glm::normalize(contactData->a->pos - contactData->b->pos));
 		const auto difVelX = velXA - velXB;
 		const auto difVelY = velYA - velYB;
-		const double separationVel{ dot(difVelX, difVelY, contactData.normalX, contactData.normalY) };
+		const float separationVel{ dot(difVelX, difVelY, contactData.normalX, contactData.normalY) };
 		
 		if (separationVel > 0.0)
 		{
 			constexpr auto k = 0.7; // 0 - 1 restitution
 			const auto impulse{ (-k * separationVel - separationVel) / GameData::GameObjectTotalInvMass };
-			const double impulsePerIMass[] {
+			const float impulsePerIMass[] {
 				contactData.normalX * impulse,
 				contactData.normalY * impulse
 			};
@@ -396,7 +417,7 @@ namespace Game
 	{
 		if (contactData.penetatrion > 0.0)
 		{
-			const double movePerIMass[]{
+			const float movePerIMass[]{
 				contactData.normalX * (contactData.penetatrion / GameData::GameObjectTotalInvMass),
 				contactData.normalY * (contactData.penetatrion / GameData::GameObjectTotalInvMass)
 			};
@@ -512,12 +533,12 @@ namespace Game
 			auto guard = context.CreateProfileMarkGuard("Update Physics");
 
 			// 1 - Update posicions / velocitats
-			UpdateGameObjects(gameData.gameObjects, inputData, context);
+			UpdateGameObjects(gameData.gameObjects, renderData, inputData, context);
 
 			// 2 - Generació de colisions
 
 			//   2.1 - Broad-Phase: "Sort & Sweep"
-			SortAndSweep(gameData, context);
+			SortAndSweep(gameData, renderData, context);
 
 			//   2.2 - Fine-Grained
 			//FineGrained(gameData, context);
@@ -535,8 +556,7 @@ namespace Game
 			{
 				//renderData.sprites[i].position = { gameData.gameObjects.posX[i], gameData.gameObjects.posY[i] };
 				//renderData.sprites[i].size = { GameData::GameObjectScale, GameData::GameObjectScale };
-				// TODO: optimize
-			
+				// TODO: optimize			
 			renderData.modelMatrices[i] = 
 				glm::scale(
 					glm::translate(glm::mat4(), glm::vec3(gameData.gameObjects.posX[i], gameData.gameObjects.posY[i], 0.f)), 

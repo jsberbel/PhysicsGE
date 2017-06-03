@@ -173,7 +173,6 @@
     <ClInclude Include="Allocators.hpp" />
     <ClInclude Include="Game.hh" />
     <ClInclude Include="IO.hh" />
-    <ClInclude Include="NewJobContext.hpp" />
     <ClInclude Include="Profiler.hh" />
     <ClInclude Include="SOA.hpp" />
     <ClInclude Include="TaskManager.hh" />

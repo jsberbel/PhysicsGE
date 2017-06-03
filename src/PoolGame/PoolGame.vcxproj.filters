@@ -68,9 +68,6 @@
     <ClInclude Include="Allocators.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="NewJobContext.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="SOA.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
