@@ -36,25 +36,39 @@
 
 namespace Win32
 {
-	struct VertexTN
+	struct VertexData
 	{
-		glm::vec3 p, n;
-		glm::vec4 c;
+		glm::vec3 p;
 		glm::vec2 t;
 	};
 
-	struct VAO
+	struct SceneObjectData
+	{
+		enum {
+			VBO_Vertex,
+			VBO_Color,
+			VBO_InstanceModel,
+			VBO_MAX
+		};
+		GLuint vao;
+		GLuint vbo[VBO_MAX];
+		GLuint ebo;
+		int numIndices = 0;
+	};
+
+	struct ImGUIObjectData
 	{
 		GLuint vao;
-		GLuint ebo, vbo;
-		int numIndices;
+		GLuint vbo;
 	};
 
 	struct Renderer
 	{
 		static constexpr int BuffersSize { 0x10000 };
-		static constexpr int GameScene { 0x00 };
-		static constexpr int DearImgui { 0x01 };
+		enum {
+			GameScene = 0x00, 
+			DearImgui = 0x01
+		};
 
 		enum InputLocation
 		{
@@ -62,16 +76,14 @@ namespace Win32
 		};
 
 		enum {
-			//VERTEX_ARRAY_COUNT = 0x02,
-			VAO_COUNT = 0x02,
 			UNIFORM_COUNT = 0x02,
 			PROGRAM_COUNT = 0x02,
 			TEXTURE_COUNT = static_cast<int>(Game::RenderData::TextureID::COUNT) + 0x01,
 			COUNT
 		};
 
-		//GLuint vertexArrays[VERTEX_ARRAY_COUNT];
-		VAO vaos[VAO_COUNT];
+		SceneObjectData sceneObjectData;
+		ImGUIObjectData imGUIObjectData;
 		GLuint uniforms[UNIFORM_COUNT];
 		GLuint programs[PROGRAM_COUNT];
 		GLuint textures[TEXTURE_COUNT];
@@ -89,6 +101,8 @@ namespace Win32
 	class WinJobScheduler : public Utilities::TaskManager::JobScheduler
 	{
 	public:
+		virtual ~WinJobScheduler() = default;
+
 		void SwitchToFiber(void* fiber) override
 		{
 			::SwitchToFiber(fiber);
@@ -136,11 +150,11 @@ namespace Win32
 #pragma warning(pop)  
 	}
 
-	void __stdcall WorkerThread(int idx)
+	inline void __stdcall WorkerThread(int idx)
 	{
 		{
 			char buffer[] = { "Worker Thread " };
-			_itoa(idx, &buffer[strlen(buffer)], 10);
+			_itoa_s(idx, buffer, 10);
 			SetThreadName(GetCurrentThreadId(), buffer);
 
 			//auto hr = SetThreadAffinityMask(GetCurrentThread(), 1LL << idx);

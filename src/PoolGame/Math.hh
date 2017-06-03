@@ -4,11 +4,18 @@ template<class T>
 struct TVec2
 {
 	union {
-		T v[3];
-		struct { T x, y, z; };
-		struct { T r, g, b; };
-		struct { T s, t, p; };
+		struct { T x, y; };
+		struct { T r, g; };
+		struct { T s, t; };
 	};
+
+	constexpr TVec2() : x(0), y(0) {}
+	constexpr TVec2(T a, T b) : x(a), y(b) {}
+
+	constexpr TVec2 operator*(T scalar)
+	{
+		return TVec2{ x *scalar, y * scalar };
+	}
 };
 
 typedef TVec2<int> iVec2;

@@ -3,7 +3,7 @@
 #include "glm/glm.hpp"
 
 #include "TaskManager.hh"
-#include "Utils.inl.hh"
+#include "Math.hh"
 
 namespace Game
 {
@@ -43,12 +43,15 @@ namespace Game
 			COUNT
 		};
 
-		TextureID texture;
+		TextureID texture; // NOTE: Testing only 1 texture for all gameobjects
 		glm::mat4 modelMatrices[MaxGameObjects];
 		glm::vec4 colors[MaxGameObjects];
 	};
 
 	GameData* InitGamedata (const InputData & input);
-	void Update (GameData & gameData, RenderData & renderData, const InputData & inputData, const Utilities::TaskManager::JobContext &context);
+	void Update (RenderData & renderData_,
+				 GameData *& gameData,
+				 const InputData & inputData, 
+				 const Utilities::TaskManager::JobContext &context);
 	void FinalizeGameData (GameData *& gameData);
 }

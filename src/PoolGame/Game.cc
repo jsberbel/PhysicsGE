@@ -8,7 +8,6 @@
 #include "Profiler.hh"
 
 #include "TaskManagerHelpers.hh"
-#include "Utils.inl.hh"
 #include <glm/gtc/matrix_transform.inl>
 
 namespace Game
@@ -145,27 +144,25 @@ namespace Game
 			auto &velY = gameObjects_.velY[i];
 
 			// COMPUTE FRICTION
-			float frictionX = 0, frictionY = 0;
+			fVec2 friction;
 			const float brakeValue{ pow(k0, inputData.dt) };
 			const float speed{ length(velX, velY) };
 			if (speed > 0)
 			{
 				const float fv{ k1 * speed + k2 * speed * speed };
-				frictionX -= fv * (velX / speed);
-				frictionY -= fv * (velY / speed);
+				friction.x -= fv * (velX / speed);
+				friction.y -= fv * (velY / speed);
 			}
-			const float accelerationX{ frictionX * GameData::GameObjectInvMass };
-			const float accelerationY{ frictionY * GameData::GameObjectInvMass };
+			const fVec2 acceleration { friction * GameData::GameObjectInvMass };
 
 			// COMPUTE POSITION & VELOCITY
 			const auto kdt = (inputData.dt * inputData.dt) / 2.0;
-			const auto prevPosX = posX, prevPosY = posY;
-			posX += velX * inputData.dt + accelerationX * kdt;
-			posY += velY * inputData.dt + accelerationY * kdt;
-			velX = brakeValue * velX + accelerationX * inputData.dt;
-			velY = brakeValue * velY + accelerationY * inputData.dt;
+			posX += velX * inputData.dt + acceleration.x * kdt;
+			posY += velY * inputData.dt + acceleration.y * kdt;
+			velX = brakeValue * velX + acceleration.x * inputData.dt;
+			velY = brakeValue * velY + acceleration.y * inputData.dt;
 
-			if (length(velX, velY) < 1e-3) //1e-1
+			if (length(velX, velY) < 1e-3) // 1e-1
 				velX = velY = 0;
 
 			// CHECK & CORRECT MAP LIMITS
@@ -188,13 +185,13 @@ namespace Game
 		context.DoAndWait(&job);
 	}
 
-	inline constexpr bool HasCollision(GameData::GameObjectList & gameObjects, unsigned indexA, unsigned indexB)
+	constexpr bool HasCollision(GameData::GameObjectList & gameObjects, unsigned indexA, unsigned indexB)
 	{
 		return distance(gameObjects.posX[indexA], gameObjects.posY[indexA],
 						gameObjects.posX[indexB], gameObjects.posY[indexB]) < GameObjectScale + GameObjectScale;
 	}
 
-	inline constexpr GameData::ContactData GenerateContactData(GameData::GameObjectList & gameObjects, unsigned indexA, unsigned indexB)
+	constexpr GameData::ContactData GenerateContactData(GameData::GameObjectList & gameObjects, unsigned indexA, unsigned indexB)
 	{
 		const auto &posXA = gameObjects.posX[indexA];
 		const auto &posYA = gameObjects.posY[indexA];
@@ -212,7 +209,7 @@ namespace Game
 		};
 	}
 
-	inline void GenerateContactGroups(GameData & gameData, int createdGroups[Utilities::Profiler::MaxNumThreads][MaxGameObjects],
+	inline void GenerateContactGroups(GameData *& gameData, int createdGroups[Utilities::Profiler::MaxNumThreads][MaxGameObjects],
 									  const GameData::ContactData & contact, const Utilities::TaskManager::JobContext & context)
 	{
 		auto it = createdGroups[context.threadIndex][contact.a]; // busquem si ja tenim alguna colisió amb l'objecte "a"
@@ -221,40 +218,40 @@ namespace Game
 			it = createdGroups[context.threadIndex][contact.b]; // busquem si ja tenim alguna colisió amb l'objecte "b"
 			if (it == -1)
 			{
-				if (gameData.contactGroupsSizes[context.threadIndex] < gameData.contactGroups[context.threadIndex].size())
+				if (gameData->contactGroupsSizes[context.threadIndex] < gameData->contactGroups[context.threadIndex].size())
 				{
-					gameData.contactGroups[context.threadIndex][gameData.contactGroupsSizes[context.threadIndex]++] = std::move(GameData::ContactGroup{
+					gameData->contactGroups[context.threadIndex][gameData->contactGroupsSizes[context.threadIndex]++] = std::move(GameData::ContactGroup{
 						{ contact.a , contact.b }, // game object indexes
 						{ contact } // ContactData
 					}); // creem la llista de colisions nova
 				}
 				else
 				{
-					gameData.contactGroups[context.threadIndex].emplace_back(GameData::ContactGroup{
+					gameData->contactGroups[context.threadIndex].emplace_back(GameData::ContactGroup{
 						{ contact.a , contact.b }, // game object indexes
 						{ contact } // ContactData
 					}); // creem la llista de colisions nova
 				}
 
-				createdGroups[context.threadIndex][contact.a] = gameData.contactGroups[context.threadIndex].size() - 1; // guardem referència a aquesta llista
-				createdGroups[context.threadIndex][contact.b] = gameData.contactGroups[context.threadIndex].size() - 1; // per cada objecte per trobarla
+				createdGroups[context.threadIndex][contact.a] = gameData->contactGroups[context.threadIndex].size() - 1; // guardem referència a aquesta llista
+				createdGroups[context.threadIndex][contact.b] = gameData->contactGroups[context.threadIndex].size() - 1; // per cada objecte per trobarla
 			}
 			else
 			{
-				gameData.contactGroups[context.threadIndex][it].contacts.push_back(contact); // afegim la colisió a la llista
-				gameData.contactGroups[context.threadIndex][it].objectIndexes.push_back(contact.a);
+				gameData->contactGroups[context.threadIndex][it].contacts.push_back(contact); // afegim la colisió a la llista
+				gameData->contactGroups[context.threadIndex][it].objectIndexes.push_back(contact.a);
 				createdGroups[context.threadIndex][contact.a] = it; // guardem referència de l'objecte que no hem trobat abans
 			}
 		}
 		else
 		{
 			auto &groupA = it;
-			gameData.contactGroups[context.threadIndex][groupA].contacts.push_back(contact);
+			gameData->contactGroups[context.threadIndex][groupA].contacts.push_back(contact);
 
 			auto itB = createdGroups[context.threadIndex][contact.b];
 			if (itB == -1)
 			{
-				gameData.contactGroups[context.threadIndex][groupA].objectIndexes.push_back(contact.b);
+				gameData->contactGroups[context.threadIndex][groupA].objectIndexes.push_back(contact.b);
 				createdGroups[context.threadIndex][contact.b] = groupA;
 			}
 			else
@@ -266,20 +263,20 @@ namespace Game
 					// el objecte b ja és a un grup diferent, fem merge dels 2 grups.
 
 					// 1 - copiem tot el grup anterior
-					for (auto &cnt : gameData.contactGroups[context.threadIndex][groupB].contacts)
-						gameData.contactGroups[context.threadIndex][groupA].contacts.push_back(cnt);
+					for (auto &cnt : gameData->contactGroups[context.threadIndex][groupB].contacts)
+						gameData->contactGroups[context.threadIndex][groupA].contacts.push_back(cnt);
 
 					// 2 - copiem els elements del segon grup i actualitzem el mapa de grups
-					for (auto &index : gameData.contactGroups[context.threadIndex][groupB].objectIndexes)
+					for (auto &index : gameData->contactGroups[context.threadIndex][groupB].objectIndexes)
 					{
 						if (index != contact.a)
-							gameData.contactGroups[context.threadIndex][groupA].objectIndexes.push_back(index);
+							gameData->contactGroups[context.threadIndex][groupA].objectIndexes.push_back(index);
 						createdGroups[context.threadIndex][index] = groupA;
 					}
 
 					// 3 - marquem el grup com a buit
-					gameData.contactGroups[context.threadIndex][groupB].objectIndexes.clear();
-					gameData.contactGroups[context.threadIndex][groupB].contacts.clear();
+					gameData->contactGroups[context.threadIndex][groupB].objectIndexes.clear();
+					gameData->contactGroups[context.threadIndex][groupB].contacts.clear();
 				}
 			}
 		}
@@ -290,13 +287,13 @@ namespace Game
 	//   2 - Crear una llista ordenada amb cada extrem anotat ( o1min , o1max, o2min, o3min, o2max, o3max )
 	//   3 - Des de cada "min" anotar tots els "min" que es trobin abans de trobar el "max" corresponent a aquest objecte.
 	//        aquests son les possibles colisions.
-	inline void SortAndSweep(GameData & gameData, RenderData & renderData, const Utilities::TaskManager::JobContext &context)
+	inline void GenerateCollisionGroups(GameData *& gameData, RenderData & renderData, const Utilities::TaskManager::JobContext &context)
 	{
 		auto jobExtremes = Utilities::TaskManager::CreateLambdaBatchedJob(
 			[&gameData](unsigned i, const Utilities::TaskManager::JobContext& context)
 			{
-				gameData.extremes[i * 2 + 0] = { gameData.gameObjects.getMinX(i), i, true };
-				gameData.extremes[i * 2 + 1] = { gameData.gameObjects.getMaxX(i), i, false };
+				gameData->extremes[i * 2 + 0] = { gameData->gameObjects.getMinX(i), i, true };
+				gameData->extremes[i * 2 + 1] = { gameData->gameObjects.getMaxX(i), i, false };
 			},
 			"Generate Extremes",
 			MaxGameObjects / (Utilities::Profiler::MaxNumThreads - 1),
@@ -311,7 +308,7 @@ namespace Game
 			const int index = groupCounter++;
 			const int first = GameData::ExtremesSize * (float(index) / float(NumMergeGroups));
 			const int last = GameData::ExtremesSize * (float(index + 1) / float(NumMergeGroups));
-			std::sort(gameData.extremes + first, gameData.extremes + last);
+			std::sort(gameData->extremes + first, gameData->extremes + last);
 		},
 			"Divide & Sort Extremes",
 			NumMergeGroups
@@ -331,12 +328,12 @@ namespace Game
 				const int first = GameData::ExtremesSize * (float(index) / float(mergeDivisions));
 				const int middle = first + float(GameData::ExtremesSize / mergeDivisions) / 2.0;
 				const int last = GameData::ExtremesSize * (float(index + 1) / float(mergeDivisions));
-				std::copy(gameData.extremes + first, gameData.extremes + last, copiedExtremes + first);
+				std::copy(gameData->extremes + first, gameData->extremes + last, copiedExtremes + first);
 				std::merge(copiedExtremes + first,
 						   copiedExtremes + middle,
 						   copiedExtremes + middle,
 						   copiedExtremes + last,
-						   gameData.extremes + first);
+						   gameData->extremes + first);
 			},
 				"Merge Extremes",
 				mergeDivisions
@@ -353,23 +350,23 @@ namespace Game
 		for (auto &group : createdGroups)
 			for (auto &x : group)
 				x = -1;
-		std::fill(gameData.contactGroupsSizes, gameData.contactGroupsSizes + Utilities::Profiler::MaxNumThreads, 0);
+		std::fill(gameData->contactGroupsSizes, gameData->contactGroupsSizes + Utilities::Profiler::MaxNumThreads, 0);
 		context.AddProfileMark(Utilities::Profiler::MarkerType::END_FUNCTION, nullptr, "Declarate Groups");
 
 		auto jobSFG = Utilities::TaskManager::CreateLambdaBatchedJob(
 			[&gameData, &renderData, &createdGroups](int i, const Utilities::TaskManager::JobContext& context)
 			{
-				if (gameData.extremes[i].min)
+				if (gameData->extremes[i].min)
 				{
-					for (int j = i + 1; j < GameData::ExtremesSize && gameData.extremes[i].index != gameData.extremes[j].index; ++j)
+					for (int j = i + 1; j < GameData::ExtremesSize && gameData->extremes[i].index != gameData->extremes[j].index; ++j)
 					{
-						if (gameData.extremes[j].min && HasCollision(gameData.gameObjects, gameData.extremes[i].index, gameData.extremes[j].index))
+						if (gameData->extremes[j].min && HasCollision(gameData->gameObjects, gameData->extremes[i].index, gameData->extremes[j].index))
 						{
-							renderData.colors[gameData.extremes[i].index] = { 2, 0, 2, 1 };
-							renderData.colors[gameData.extremes[j].index] = { 0, 2, 2, 1 };
+							renderData.colors[gameData->extremes[i].index] = { 2, 0, 2, 1 };
+							renderData.colors[gameData->extremes[j].index] = { 0, 2, 2, 1 };
 							GenerateContactGroups(gameData,
 												  createdGroups,
-												  GenerateContactData(gameData.gameObjects, gameData.extremes[i].index, gameData.extremes[j].index),
+												  GenerateContactData(gameData->gameObjects, gameData->extremes[i].index, gameData->extremes[j].index),
 												  context);
 						}
 					}
@@ -382,7 +379,7 @@ namespace Game
 		context.DoAndWait(&jobSFG);
 	}
 
-	inline constexpr void SolveVelocity(GameData::GameObjectList & gameObjects, GameData::ContactData & contactData)
+	constexpr void SolveVelocity(GameData::GameObjectList & gameObjects, GameData::ContactData & contactData)
 	{
 		const auto &posXA = gameObjects.posX[contactData.a];
 		const auto &posYA = gameObjects.posY[contactData.a];
@@ -413,7 +410,7 @@ namespace Game
 		}
 	}
 
-	inline constexpr void SolvePenetration(GameData::GameObjectList & gameObjects, GameData::ContactData & contactData)
+	constexpr void SolvePenetration(GameData::GameObjectList & gameObjects, GameData::ContactData & contactData)
 	{
 		if (contactData.penetatrion > 0.0)
 		{
@@ -428,13 +425,15 @@ namespace Game
 		}
 	}
 
-	void SolveCollisionGroups(GameData & gameData, const Utilities::TaskManager::JobContext &context)
+	void SolveCollisionGroups(GameData *& gameData, const Utilities::TaskManager::JobContext &context)
 	{
 		context.AddProfileMark(Utilities::Profiler::MarkerType::BEGIN_FUNCTION, nullptr, "Merge Contact Groups");
 		std::vector<GameData::ContactGroup> mergedContactGroups;
 		for (int i = 0; i < Utilities::Profiler::MaxNumThreads; ++i)
-			if (gameData.contactGroupsSizes[i])
-				mergedContactGroups.insert(mergedContactGroups.end(), gameData.contactGroups[i].begin(), gameData.contactGroups[i].begin() + gameData.contactGroupsSizes[i]);
+			if (gameData->contactGroupsSizes[i])
+				mergedContactGroups.insert(mergedContactGroups.end(), 
+										   gameData->contactGroups[i].begin(), 
+										   gameData->contactGroups[i].begin() + gameData->contactGroupsSizes[i]);
 		context.AddProfileMark(Utilities::Profiler::MarkerType::END_FUNCTION, nullptr, "Merge Contact Groups");
 
 		if (mergedContactGroups.size())
@@ -451,23 +450,12 @@ namespace Game
 					for (int j = 0; j < contacts.size(); ++j)
 						if (contacts[j].penetatrion >= contacts[maxPenetrationIndex].penetatrion)
 							maxPenetrationIndex = j;
-					/*std::atomic_int maxPenetrationIndex{ 0 };
-					auto jobB = Utilities::TaskManager::CreateLambdaBatchedJob(
-						[&maxPenetrationIndex, &contacts](int j, const Utilities::TaskManager::JobContext& context)
-						{
-						if (contacts[j].penetatrion >= contacts[maxPenetrationIndex.load()].penetatrion)
-							maxPenetrationIndex.store(j);
-						},
-						"Penetration Search",
-						contacts.size() / (contacts.size() < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads),
-						contacts.size());
-					context.DoAndWait(&jobB);*/
 
 					if (contacts[maxPenetrationIndex].penetatrion < 1e-5)
 						break;
 
-					SolveVelocity(gameData.gameObjects, contacts[maxPenetrationIndex]);
-					SolvePenetration(gameData.gameObjects, contacts[maxPenetrationIndex]);
+					SolveVelocity(gameData->gameObjects, contacts[maxPenetrationIndex]);
+					SolvePenetration(gameData->gameObjects, contacts[maxPenetrationIndex]);
 
 					#if 0
 					std::vector<PossibleCollission> possibleCollissions;
@@ -485,9 +473,9 @@ namespace Game
 					{
 						for (int k = j + 1; k < mergedContactGroups[i].objectIndexes.size(); ++k)
 						{
-							if (HasCollision(gameData.gameObjects, mergedContactGroups[i].objectIndexes[j], mergedContactGroups[i].objectIndexes[k]))
+							if (HasCollision(gameData->gameObjects, mergedContactGroups[i].objectIndexes[j], mergedContactGroups[i].objectIndexes[k]))
 							{
-								contacts.push_back(GenerateContactData(gameData.gameObjects,
+								contacts.push_back(GenerateContactData(gameData->gameObjects,
 												   mergedContactGroups[i].objectIndexes[k],
 												   mergedContactGroups[i].objectIndexes[j]));
 							}
@@ -526,50 +514,42 @@ namespace Game
 		}
 	}
 
-	void Update(GameData & gameData, RenderData & renderData, const InputData& inputData, const Utilities::TaskManager::JobContext &context)
+	inline void FillRenderData(RenderData & renderData_, GameData *& gameData, const Utilities::TaskManager::JobContext &context)
+	{
+		auto job = Utilities::TaskManager::CreateLambdaBatchedJob(
+			[&renderData_, &gameData](int i, const Utilities::TaskManager::JobContext& context)
+		{
+			// TODO: optimize
+			renderData_.modelMatrices[i] =
+				glm::scale(
+					glm::translate(glm::mat4(), glm::vec3(gameData->gameObjects.posX[i], gameData->gameObjects.posY[i], 0.f)),
+					glm::vec3(Game::GameObjectScale, Game::GameObjectScale, 1.f)
+				);
+		},
+			"Fill Render Data",
+			MaxGameObjects / (MaxGameObjects < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads - 1),
+			MaxGameObjects);
+		context.DoAndWait(&job);
+	}
+
+	void Update(RenderData & renderData_, GameData *& gameData, const InputData& inputData, const Utilities::TaskManager::JobContext &context)
 	{
 		// UPDATE PHYSICS
 		{
 			auto guard = context.CreateProfileMarkGuard("Update Physics");
 
 			// 1 - Update posicions / velocitats
-			UpdateGameObjects(gameData.gameObjects, renderData, inputData, context);
+			UpdateGameObjects(gameData->gameObjects, renderData_, inputData, context);
 
 			// 2 - Generació de colisions
-
-			//   2.1 - Broad-Phase: "Sort & Sweep"
-			SortAndSweep(gameData, renderData, context);
-
-			//   2.2 - Fine-Grained
-			//FineGrained(gameData, context);
-
-			//   2.3 - Sort / Generació de grups de col·lisions
-			//GenerateContactGroups(gameData, context);
+			GenerateCollisionGroups(gameData, renderData_, context);
 
 			// 3 - Resolució de colisions
 			SolveCollisionGroups(gameData, context);
 		}
 
-		// RENDER BALLS
-		auto job = Utilities::TaskManager::CreateLambdaBatchedJob(
-			[&renderData, &gameData](int i, const Utilities::TaskManager::JobContext& context)
-			{
-				//renderData.sprites[i].position = { gameData.gameObjects.posX[i], gameData.gameObjects.posY[i] };
-				//renderData.sprites[i].size = { GameData::GameObjectScale, GameData::GameObjectScale };
-				// TODO: optimize			
-			renderData.modelMatrices[i] = 
-				glm::scale(
-					glm::translate(glm::mat4(), glm::vec3(gameData.gameObjects.posX[i], gameData.gameObjects.posY[i], 0.f)), 
-				glm::vec3(Game::GameObjectScale, Game::GameObjectScale, 1.f)
-			);
-				
-			},
-			"Fill Render Data",
-			MaxGameObjects / (MaxGameObjects < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads)/4,
-			MaxGameObjects);
-		context.DoAndWait(&job);
-
-		//return renderData;
+		// FILL RENDER
+		FillRenderData(renderData_, gameData, context);
 	}
 	
 }

@@ -1,78 +1,87 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="Source Files">
-      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
-      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    <Filter Include="Task Manager">
+      <UniqueIdentifier>{ab21ff17-a929-49f3-97f6-7edac5286ae4}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files">
-      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
-      <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    <Filter Include="Profiler">
+      <UniqueIdentifier>{81f193ea-9773-4372-87cf-4de930b99cea}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Resource Files">
-      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
-      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    <Filter Include="Allocator">
+      <UniqueIdentifier>{02110a17-a535-4a2c-86a3-cdd149cffa0e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Dependencies">
+      <UniqueIdentifier>{9ff34fb7-b159-499f-ab63-9a29d5657764}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Platform">
+      <UniqueIdentifier>{c5e9cc98-e3ab-49c0-869b-5984490288df}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Game">
+      <UniqueIdentifier>{b4d275f7-aeb8-4050-89de-3762153add31}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Utils">
+      <UniqueIdentifier>{49d3619e-69d9-43bc-974e-cbf1cbb9871f}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Profiler.cc">
+      <Filter>Profiler</Filter>
+    </ClCompile>
     <ClCompile Include="glew.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Win32_Main.cc">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Game.cc">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\dep\imgui\imgui_draw.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>Dependencies</Filter>
     </ClCompile>
     <ClCompile Include="..\..\dep\imgui\imgui.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>Dependencies</Filter>
     </ClCompile>
     <ClCompile Include="..\..\dep\imgui\imgui_demo.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>Dependencies</Filter>
     </ClCompile>
-    <ClCompile Include="Profiler.cc">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="..\..\dep\imgui\imgui_draw.cpp">
+      <Filter>Dependencies</Filter>
+    </ClCompile>
+    <ClCompile Include="Win32_Main.cc">
+      <Filter>Platform</Filter>
+    </ClCompile>
+    <ClCompile Include="Game.cc">
+      <Filter>Game</Filter>
     </ClCompile>
     <ClCompile Include="OldGameStuff.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>Game</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="IO.hh">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Win32_Main.hh">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Game.hh">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Profiler.hh">
+      <Filter>Profiler</Filter>
     </ClInclude>
     <ClInclude Include="TaskManager.hh">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ThreadsafeStructures.hh">
-      <Filter>Header Files</Filter>
+      <Filter>Task Manager</Filter>
     </ClInclude>
     <ClInclude Include="TaskManager.inl.hh">
-      <Filter>Header Files</Filter>
+      <Filter>Task Manager</Filter>
     </ClInclude>
     <ClInclude Include="TaskManagerHelpers.hh">
-      <Filter>Header Files</Filter>
+      <Filter>Task Manager</Filter>
     </ClInclude>
-    <ClInclude Include="Profiler.hh">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="ThreadsafeStructures.hh">
+      <Filter>Task Manager</Filter>
     </ClInclude>
     <ClInclude Include="Allocators.hpp">
-      <Filter>Header Files</Filter>
+      <Filter>Allocator</Filter>
     </ClInclude>
     <ClInclude Include="SOA.hpp">
-      <Filter>Header Files</Filter>
+      <Filter>Allocator</Filter>
     </ClInclude>
-    <ClInclude Include="Utils.inl.hh">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Win32_Main.hh">
+      <Filter>Platform</Filter>
+    </ClInclude>
+    <ClInclude Include="IO.hh">
+      <Filter>Platform</Filter>
+    </ClInclude>
+    <ClInclude Include="Math.hh">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="Game.hh">
+      <Filter>Game</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
