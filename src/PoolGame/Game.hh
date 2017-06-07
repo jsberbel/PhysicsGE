@@ -43,7 +43,7 @@ namespace Game
 			COUNT
 		};
 
-		TextureID texture; // NOTE: Testing only 1 texture for all gameobjects
+		TextureID texture = TextureID::BALL_WHITE; // NOTE: Testing 1 texture for all gameobjects
 		glm::mat4 modelMatrices[MaxGameObjects];
 		glm::vec4 colors[MaxGameObjects];
 	};

@@ -631,7 +631,6 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 	inputData.windowHalfSize = { s_screenWidth / 2, s_screenHeight / 2 };
 	Game::GameData * gameData = Game::InitGamedata(inputData);
 	Game::RenderData renderData;
-	renderData.texture = Game::RenderData::TextureID::BALL_WHITE;
 
 	// create a orthogonal projection matrix
 	glm::mat4 projection = glm::ortho(-static_cast<float>(inputData.windowHalfSize.x), // left
@@ -766,7 +765,7 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 
 			if (camera.needsUpdate)
 			{
-				projection = glm::ortho(-static_cast<float>((-camera.pos.x+ inputData.windowHalfSize.x * camera.zoom)), // left
+				projection = glm::ortho(-static_cast<float>((-camera.pos.x + inputData.windowHalfSize.x * camera.zoom)), // left
 										static_cast<float>((camera.pos.x + inputData.windowHalfSize.x * camera.zoom)), // right
 										-static_cast<float>((-camera.pos.y + inputData.windowHalfSize.y * camera.zoom)), // bot
 										static_cast<float>((camera.pos.y + inputData.windowHalfSize.y * camera.zoom)), // top
@@ -848,7 +847,7 @@ WinMain(__in HINSTANCE hInstance, __in_opt HINSTANCE hPrevInstance, __in_opt LPS
 
 		Win32::s_Profiler.AddProfileMark(Utilities::Profiler::MarkerType::BEGIN, nullptr, "Instanced Rendering");
 		{
-			glBindTexture(GL_TEXTURE_2D, renderer.textures[static_cast<int>(Game::RenderData::TextureID::BALL_WHITE)]); // get the right texture
+			glBindTexture(GL_TEXTURE_2D, renderer.textures[static_cast<int>(Game::RenderData::TextureID::BALL_WHITE)]);
 
 			Win32::InstanceData instanceData{ projection };
 			glBindBuffer(GL_UNIFORM_BUFFER, renderer.uniforms[Win32::Renderer::GameScene]);

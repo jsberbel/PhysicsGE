@@ -300,7 +300,7 @@ namespace Game
 			MaxGameObjects);
 		context.DoAndWait(&jobExtremes);
 
-		static constexpr auto NumMergeGroups = 8u; // IMPORTANT: ONLY POWER OF TWO
+		static constexpr auto NumMergeGroups = 8u; // NOTE: Only power of 2
 		std::atomic_int groupCounter = 0;
 		auto sortJob = Utilities::TaskManager::CreateLambdaJob(
 			[&gameData, &groupCounter](int i, const Utilities::TaskManager::JobContext& context)
@@ -321,6 +321,7 @@ namespace Game
 		{
 			mergeDivisions /= 2;
 			groupCounter = 0;
+			std::copy(gameData->extremes, gameData->extremes + GameData::ExtremesSize, copiedExtremes);
 			auto mergeJob = Utilities::TaskManager::CreateLambdaJob(
 				[&gameData, &groupCounter, &mergeDivisions, &copiedExtremes](int i, const Utilities::TaskManager::JobContext& context)
 			{
@@ -328,7 +329,6 @@ namespace Game
 				const int first = GameData::ExtremesSize * (float(index) / float(mergeDivisions));
 				const int middle = first + float(GameData::ExtremesSize / mergeDivisions) / 2.0;
 				const int last = GameData::ExtremesSize * (float(index + 1) / float(mergeDivisions));
-				std::copy(gameData->extremes + first, gameData->extremes + last, copiedExtremes + first);
 				std::merge(copiedExtremes + first,
 						   copiedExtremes + middle,
 						   copiedExtremes + middle,
@@ -373,7 +373,7 @@ namespace Game
 				}
 			},
 			"Sweep + Fine-Grained + Collision Groups",
-			GameData::ExtremesSize / (GameData::ExtremesSize < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads),
+			GameData::ExtremesSize / (GameData::ExtremesSize < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads-1),
 			GameData::ExtremesSize
 		);
 		context.DoAndWait(&jobSFG);
