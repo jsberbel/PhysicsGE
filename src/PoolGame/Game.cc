@@ -1,14 +1,11 @@
 #include "Game.hh"
-#include <ctime>
-#include <iterator>
 #include <Windows.h>
 #include <algorithm>
 #include <vector>
+#include <glm/gtc/matrix_transform.inl>
 
 #include "Profiler.hh"
-
 #include "TaskManagerHelpers.hh"
-#include <glm/gtc/matrix_transform.inl>
 
 namespace Game
 {
@@ -61,8 +58,8 @@ namespace Game
 			std::vector<ContactData> contacts;
 		};
 
-		std::vector<ContactGroup> contactGroups[Utilities::Profiler::MaxNumThreads];
-		unsigned contactGroupsSizes[Utilities::Profiler::MaxNumThreads];
+		std::vector<ContactGroup> contactGroups[Utilities::Profiler::MaxNumThreads-1];
+		unsigned contactGroupsSizes[Utilities::Profiler::MaxNumThreads-1];
 	};
 
 	GameData* InitGamedata(const InputData & input)
@@ -136,12 +133,13 @@ namespace Game
 		auto job = Utilities::TaskManager::CreateLambdaBatchedJob(
 			[&gameObjects_, &renderData, &inputData](int i, const Utilities::TaskManager::JobContext& context)
 			{
-			static constexpr float k0 = 0.99/*0.8*/, k1 = 0.1, k2 = 0.01;
 
 			auto &posX = gameObjects_.posX[i];
 			auto &posY = gameObjects_.posY[i];
 			auto &velX = gameObjects_.velX[i];
 			auto &velY = gameObjects_.velY[i];
+
+			static constexpr float k0 = 0.99/*0.8*/, k1 = 0.1, k2 = 0.01;
 
 			// COMPUTE FRICTION
 			fVec2 friction;
@@ -177,6 +175,27 @@ namespace Game
 				posY = -inputData.windowHalfSize.y + GameObjectScale, velY = -velY;
 
 			renderData.colors[i] = { 1, 1, 1, 1 };
+
+			//if (inputData.mouseButtonL == InputData::ButtonState::DOWN || inputData.mouseButtonL == InputData::ButtonState::HOLD)
+			//{
+			//	auto realMouseX = inputData.mousePosition.x - inputData.windowHalfSize.x;
+			//	auto realMouseY = inputData.windowHalfSize.y - inputData.mousePosition.y;
+
+			//	if (posX - GameObjectScale < float(realMouseX) &&
+			//		posX + GameObjectScale > float(realMouseX) &&
+			//		posY - GameObjectScale < float(realMouseY) &&
+			//		posY + GameObjectScale > float(realMouseY))
+			//	{
+			//		/*char buffer[512];
+			//		sprintf_s(buffer, "x: %f, y: %d\nx: %f, y : %d\n\n", gameData.whiteBall->pos.x, realMouseX, gameData.whiteBall->pos.y, realMouseY);
+			//		OutputDebugStringA(buffer);*/
+			//		//gameData.whiteBall->vel = {};
+			//		posX = realMouseX;
+			//		posY = realMouseY;
+			//		velX = 0;
+			//		velY = 0;
+			//	}
+			//}
 			},
 			"Update Positions",
 			MaxGameObjects / (Utilities::Profiler::MaxNumThreads - 1),
@@ -209,7 +228,7 @@ namespace Game
 		};
 	}
 
-	inline void GenerateContactGroups(GameData *& gameData, int createdGroups[Utilities::Profiler::MaxNumThreads][MaxGameObjects],
+	inline void GenerateContactGroups(GameData *& gameData, int createdGroups[Utilities::Profiler::MaxNumThreads-1][MaxGameObjects],
 									  const GameData::ContactData & contact, const Utilities::TaskManager::JobContext & context)
 	{
 		auto it = createdGroups[context.threadIndex][contact.a]; // busquem si ja tenim alguna colisió amb l'objecte "a"
@@ -346,11 +365,11 @@ namespace Game
 		context.AddProfileMark(Utilities::Profiler::MarkerType::END_FUNCTION, nullptr, "Sort");*/
 
 		context.AddProfileMark(Utilities::Profiler::MarkerType::BEGIN_FUNCTION, nullptr, "Declarate Groups");
-		int createdGroups[Utilities::Profiler::MaxNumThreads][MaxGameObjects];
+		int createdGroups[Utilities::Profiler::MaxNumThreads-1][MaxGameObjects];
 		for (auto &group : createdGroups)
 			for (auto &x : group)
 				x = -1;
-		std::fill(gameData->contactGroupsSizes, gameData->contactGroupsSizes + Utilities::Profiler::MaxNumThreads, 0);
+		std::fill(gameData->contactGroupsSizes, gameData->contactGroupsSizes + Utilities::Profiler::MaxNumThreads-1, 0);
 		context.AddProfileMark(Utilities::Profiler::MarkerType::END_FUNCTION, nullptr, "Declarate Groups");
 
 		auto jobSFG = Utilities::TaskManager::CreateLambdaBatchedJob(
@@ -373,7 +392,7 @@ namespace Game
 				}
 			},
 			"Sweep + Fine-Grained + Collision Groups",
-			GameData::ExtremesSize / (GameData::ExtremesSize < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads-1),
+			GameData::ExtremesSize / (GameData::ExtremesSize < Utilities::Profiler::MaxNumThreads-1 ? 1 : Utilities::Profiler::MaxNumThreads-1) / 5,
 			GameData::ExtremesSize
 		);
 		context.DoAndWait(&jobSFG);
@@ -429,7 +448,7 @@ namespace Game
 	{
 		context.AddProfileMark(Utilities::Profiler::MarkerType::BEGIN_FUNCTION, nullptr, "Merge Contact Groups");
 		std::vector<GameData::ContactGroup> mergedContactGroups;
-		for (int i = 0; i < Utilities::Profiler::MaxNumThreads; ++i)
+		for (int i = 0; i < Utilities::Profiler::MaxNumThreads-1; ++i)
 			if (gameData->contactGroupsSizes[i])
 				mergedContactGroups.insert(mergedContactGroups.end(), 
 										   gameData->contactGroups[i].begin(), 
@@ -507,7 +526,7 @@ namespace Game
 				}
 			},
 				"Group Solver",
-				(mergedContactGroups.size() / (mergedContactGroups.size() < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads)),
+				(mergedContactGroups.size() / (mergedContactGroups.size() < Utilities::Profiler::MaxNumThreads-1 ? 1 : Utilities::Profiler::MaxNumThreads-1)),
 				mergedContactGroups.size());
 
 			context.DoAndWait(&jobA);
@@ -527,7 +546,7 @@ namespace Game
 				);
 		},
 			"Fill Render Data",
-			MaxGameObjects / (MaxGameObjects < Utilities::Profiler::MaxNumThreads ? 1 : Utilities::Profiler::MaxNumThreads - 1),
+			MaxGameObjects / (MaxGameObjects < Utilities::Profiler::MaxNumThreads-1 ? 1 : Utilities::Profiler::MaxNumThreads - 1),
 			MaxGameObjects);
 		context.DoAndWait(&job);
 	}
